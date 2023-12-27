@@ -1,0 +1,17 @@
+---
+version: 1.0
+runtime: python3.11
+build:
+  env:
+    type: dockerfile # Specify that we are using a Dockerfile for configuration
+  dockerfile:
+    path: ./Dockerfile # Path to the Dockerfile
+service:
+  port: 8000 # Port your application listens on (ensure it matches with your app's settings)
+  health_check:
+    protocol: HTTP
+    path: /health # Adjust if you have a specific health check path
+    interval: 30
+    timeout: 5
+    healthy_threshold: 3
+    unhealthy_threshold: 3
