@@ -40,8 +40,8 @@ A simple Telegram bot that tracks Ethereum gas prices using the Etherscan API.
 - `/gas` - Show current gas prices.
 - `/subscribe` - Subscribe to gas price alerts.
 - `/unsubscribe` - Unsubscribe from gas price alerts.
-- `/thresholds` - Show current gas price alert thresholds. **to be implemented**
-- `/set_thresholds` - Set gas price alert thresholds. **to be implemented**
+- `/thresholds` - Show current gas price alert thresholds.
+- `/set_thresholds` - Set gas price alert thresholds.
 
 ### Alerts
 

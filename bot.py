@@ -36,6 +36,7 @@ bot = Bot(TELEGRAM_TOKEN)
 updater = Updater(bot, update_queue)
 
 subscribers = set()
+user_thresholds = {}  # {chat_id: {"green": int, "yellow": int}}
 
 # Define command handlers
 
@@ -93,6 +94,8 @@ async def help_command(update, context):
         "/gas - Get the current Ethereum gas prices\n"
         "/subscribe - Subscribe to low gas price alerts\n"
         "/unsubscribe - Unsubscribe from gas price alerts\n"
+        "/thresholds - Get the current alert thresholds\n"
+        "/set_thresholds - Set the alert thresholds\n"
         "/help - Show this help message\n"
         "Or just send '?' anytime you need help.\n\n"
         "To receive alerts, use the /subscribe command. When the gas price is low, "
@@ -105,6 +108,10 @@ async def handle_updates(queue: Queue):
     """Handle updates"""
     while True:
         update = await queue.get()
+        if update is None:
+            break
+        if update.message is None:
+            continue
         text = update.message.text
         if text == '/start':
             await start(update, None)
@@ -114,6 +121,10 @@ async def handle_updates(queue: Queue):
             await subscribe(update, None)
         elif text == '/unsubscribe':
             await unsubscribe(update, None)
+        elif text == '/thresholds':
+            await thresholds(update, None)
+        elif text.startswith('/set_thresholds'):
+            await set_thresholds(update, None)
         elif text == '/help' or text == '?':
             await help_command(update, None)
 
@@ -136,6 +147,38 @@ async def unsubscribe(update, context):
         await update.message.reply_text('You have unsubscribed from gas price alerts.')
     else:
         await update.message.reply_text("You aren't subscribed.")
+
+
+async def thresholds(update, context):
+    """Get the current alert thresholds."""
+    chat_id = update.message.chat_id
+    current_thresholds = user_thresholds.get(
+        chat_id, {"green": 30, "yellow": 35})
+    text = (f"Current alert thresholds:\n"
+            f"🟢 Green (Low): {current_thresholds['green']} gwei\n"
+            f"🟡 Yellow (Medium): {current_thresholds['yellow']} gwei")
+    await update.message.reply_text(text)
+
+
+async def set_thresholds(update, context):
+    """Set the alert thresholds."""
+    chat_id = update.message.chat_id
+    try:
+        # Extract green and yellow thresholds from the message
+        args = update.message.text.split()[1:]  # e.g., /set_thresholds 20 40
+        green_threshold, yellow_threshold = map(int, args)
+
+        # Update the user's thresholds
+        user_thresholds[chat_id] = {
+            "green": green_threshold, "yellow": yellow_threshold}
+        text = ("Thresholds updated successfully:\n"
+                f"🟢 Green (Low): {green_threshold} gwei\n"
+                f"🟡 Yellow (Medium): {yellow_threshold} gwei")
+    except (ValueError, IndexError):
+        text = ("Invalid format. Use the command like this:\n"
+                "/set_thresholds <green_threshold> <yellow_threshold>\n"
+                "For example: /set_thresholds 20 40")
+    await update.message.reply_text(text)
 
 
 async def monitor_gas_prices():
@@ -185,6 +228,8 @@ async def start(update, context):
         "/gas - Get the current Ethereum gas prices\n"
         "/subscribe - Subscribe to alerts\n"
         "/unsubscribe - Unsubscribe from alerts\n"
+        "/thresholds - Get the current alert thresholds\n"
+        "/set_thresholds - Set the alert thresholds\n"
         "Or simply send '?' for help."
     )
     await update.message.reply_text(start_text)
