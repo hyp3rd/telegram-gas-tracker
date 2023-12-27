@@ -4,12 +4,16 @@ import logging
 import os
 import signal
 from asyncio.queues import Queue
+from threading import Thread
 
 import aiohttp
 import telegram.error as telegram_error
 from dotenv import load_dotenv
 from telegram import Bot
 from telegram.ext import Updater
+from uvicorn import Config, Server
+
+from api import app
 
 # pylint: disable=unused-argument
 # pylint: disable=line-too-long
@@ -340,7 +344,7 @@ async def start(update, context):
     await update.message.reply_text(start_text)
 
 
-async def shutdown(sig: signal, loop):
+async def shutdown(sig: signal, server: Server, loop):
     """Clean up tasks and shut down the bot gracefully."""
     print(f"Received exit signal {sig.name}...")
 
@@ -348,10 +352,16 @@ async def shutdown(sig: signal, loop):
     if updater.running:
         await updater.stop()
 
+    # Shut down the server if it's defined
+    if server:
+        server.should_exit = True
+
     # Cancel all outstanding tasks
     tasks = [t for t in asyncio.all_tasks(
         loop) if t is not asyncio.current_task()]
+
     print(f"Cancelling {len(tasks)} outstanding tasks")
+
     for task in tasks:
         # Log the task being cancelled
         print(f"Cancelling task: {task.get_name()}")
@@ -360,7 +370,12 @@ async def shutdown(sig: signal, loop):
             await task  # Wait for the task to be cancelled
         except asyncio.CancelledError:
             pass  # Task cancellation is expected
+
     print("All tasks have been cancelled")
+
+    # Wait for all tasks to be cancelled
+    await asyncio.gather(*tasks, return_exceptions=True)
+
     loop.stop()
     print("Shutdown complete")
 
@@ -369,11 +384,22 @@ async def main():
     """Start the bot and the gas price monitor."""
     loop = asyncio.get_running_loop()
 
+    # Configure Uvicorn server
+    config = Config(app=app, host="0.0.0.0", port=8000, loop=loop)
+    server = Server(config)
+
     # Handle shutdown signals
     signals = (signal.SIGTERM, signal.SIGINT)
     for s in signals:
         loop.add_signal_handler(
-            s, lambda s=s: asyncio.create_task(shutdown(s, loop)))
+            s, lambda s=s: asyncio.create_task(shutdown(s, server,  loop)))
+
+    def run_server():
+        """Run the Uvicorn server in a separate thread."""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(server.serve())
+        loop.close()
 
     try:
         async with updater:
@@ -385,6 +411,10 @@ async def main():
                     update_queue), name="update_handler")
             ]
 
+            # Run the Uvicorn server in a separate thread
+            server_thread = Thread(target=run_server)
+            server_thread.start()
+
             try:
                 # Wait for all tasks to complete (they won't unless canceled)
                 await asyncio.gather(*tasks)
@@ -395,6 +425,8 @@ async def main():
         logger.info(
             "CancelledError caught in main() - during updater operation")
 
+    # Ensure the server thread stops when the main tasks are cancelled
+    server_thread.join()
 
 if __name__ == '__main__':
     asyncio.run(main())
