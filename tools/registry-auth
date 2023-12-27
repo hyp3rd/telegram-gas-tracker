@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-
-set -e
-
-token=$(aws ecr get-login-password --region eu-central-1)
-
-aws ecr --region eu-central-1 | docker login -u AWS -p "$token" 700029131908.dkr.ecr.eu-central-1.amazonaws.com/telegram-gas-tracker

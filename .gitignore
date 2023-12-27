@@ -225,5 +225,5 @@ tags
 [._]*.un~
 
 ### Project ###
-./build
-./tools/registry-auth
+build
+tools/registry-auth
