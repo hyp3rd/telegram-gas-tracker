@@ -154,7 +154,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
+# .env
 .venv
 env/
 venv/
@@ -224,3 +224,5 @@ tags
 # Persistent undo
 [._]*.un~
 
+## Project-specific ignores
+tools/
