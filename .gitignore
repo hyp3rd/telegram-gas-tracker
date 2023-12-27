@@ -224,3 +224,6 @@ tags
 # Persistent undo
 [._]*.un~
 
+### Project ###
+./build
+./tools/registry-auth
