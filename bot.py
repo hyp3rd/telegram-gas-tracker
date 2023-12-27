@@ -6,6 +6,7 @@ import signal
 from asyncio.queues import Queue
 
 import aiohttp
+import telegram.error as telegram_error
 from dotenv import load_dotenv
 from telegram import Bot
 from telegram.ext import Updater
@@ -37,6 +38,9 @@ updater = Updater(bot, update_queue)
 
 subscribers = set()
 user_thresholds = {}  # {chat_id: {"green": int, "yellow": int}}
+
+last_sent_prices = {}  # {chat_id: {"low": int, "average": int, "fast": int}}
+UPDATE_THRESHOLD = 5  # Only send an update if the price changes by more than this amount
 
 # Define command handlers
 
@@ -96,12 +100,19 @@ async def help_command(update, context):
         "/unsubscribe - Unsubscribe from gas price alerts\n"
         "/thresholds - Get the current alert thresholds\n"
         "/set_thresholds - Set the alert thresholds\n"
+        "/track - Start temporary tracking for a specified duration (max 10 minutes)\n"
         "/help - Show this help message\n"
         "Or just send '?' anytime you need help.\n\n"
         "To receive alerts, use the /subscribe command. When the gas price is low, "
         "you'll receive a notification!"
     )
-    await update.message.reply_text(help_text, parse_mode='Markdown')
+    try:
+        # Escape underscores for markdown
+        help_text = help_text.replace('_', '\\_')
+        await update.message.reply_text(help_text, parse_mode="Markdown")
+
+    except (asyncio.TimeoutError, aiohttp.ClientError, asyncio.CancelledError, telegram_error.BadRequest):
+        logger.exception("Exception handling the help command")
 
 
 async def handle_updates(queue: Queue):
@@ -110,7 +121,7 @@ async def handle_updates(queue: Queue):
         update = await queue.get()
         if update is None:
             break
-        if update.message is None:
+        if update.message is None or update.message.text is None:
             continue
         text = update.message.text
         if text == '/start':
@@ -125,6 +136,8 @@ async def handle_updates(queue: Queue):
             await thresholds(update, None)
         elif text.startswith('/set_thresholds'):
             await set_thresholds(update, None)
+        elif text.startswith('/track'):
+            await track(update, None)
         elif text in ('/help', '?'):
             await help_command(update, None)
 
@@ -181,9 +194,76 @@ async def set_thresholds(update, context):
     await update.message.reply_text(text)
 
 
+async def track(update, context):
+    """Start temporary tracking for a specified duration."""
+    chat_id = update.message.chat_id
+    try:
+        # Extract the duration from the message
+        args = update.message.text.split()[1:]  # e.g., /track 5
+        duration = int(args[0])  # Duration in minutes
+
+        if 0 < duration <= 10:  # Ensure duration is between 1 and 10 minutes
+            await update.message.reply_text(f"Starting temporary tracking for {duration} minutes.")
+            await start_temporary_tracking(chat_id, duration)
+        else:
+            await update.message.reply_text("Invalid duration. Please specify a number between 1 and 10.")
+
+    except (ValueError, IndexError):
+        await update.message.reply_text("Invalid format. Use the command like this: /track <minutes>")
+
+
+async def start_temporary_tracking(chat_id, duration):
+    """Track gas prices and send updates every 30 seconds for a specified duration."""
+    end_time = asyncio.get_event_loop().time() + duration * \
+        60  # Convert minutes to seconds
+
+    while asyncio.get_event_loop().time() < end_time:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(ETHERSCAN_API_URL, timeout=60) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("status") == "1":
+                            result = data.get("result")
+                            low_gas = int(result['SafeGasPrice'])
+                            average_gas = int(result['ProposeGasPrice'])
+                            fast_gas = int(result['FastGasPrice'])
+
+                            # Get the user's custom thresholds or use default values
+                            current_thresholds = user_thresholds.get(
+                                chat_id, {"green": 30, "yellow": 35})
+
+                            # Create the message text with the appropriate emojis
+                            alert_text = (
+                                f"🚀 Temporary Ethereum Gas Prices Update 🚀\n"
+                                f"Low: {low_gas} gwei {'🟢' if low_gas <= current_thresholds['green'] else '🔴'}\n"
+                                f"Average: {average_gas} gwei {'🟢' if average_gas <= current_thresholds['green'] else '🔴'}\n"
+                                f"Fast: {fast_gas} gwei {'🟢' if fast_gas <= current_thresholds['green'] else '🔴'}"
+                            )
+
+                            # Send the current gas prices
+                            try:
+                                await bot.send_message(chat_id=chat_id, text=alert_text)
+                            except aiohttp.ClientError as e:
+                                logger.error(
+                                    "Failed to send temporary tracking alert to %s: %s", chat_id, e)
+                        else:
+                            logger.error(
+                                "Error fetching gas prices during temporary tracking.")
+                    else:
+                        logger.error(
+                            "Failed to retrieve data during temporary tracking: %s", response.status)
+
+            await asyncio.sleep(30)  # Update every 30 seconds
+
+        except asyncio.CancelledError:
+            # Handle the cancellation
+            print(f"Temporary tracking for chat {chat_id} was cancelled")
+            return  # Ensure immediate exit
+
+
 async def monitor_gas_prices():
     """Monitor gas prices and send an alert when they are low."""
-    alert_threshold = 30  # Define your own threshold for low gas
     print("Starting monitor_gas_prices task")  # Unique start log
 
     while True:
@@ -194,26 +274,50 @@ async def monitor_gas_prices():
                         data = await response.json()
                         if data.get("status") == "1":
                             result = data.get("result")
-                            low_gas = int(result['SafeGasPrice'])
+                            new_low_gas = int(result['SafeGasPrice'])
+                            new_average_gas = int(result['ProposeGasPrice'])
+                            new_fast_gas = int(result['FastGasPrice'])
 
-                            if low_gas <= alert_threshold and subscribers:
-                                alert_text = (
-                                    f"⚠️ Alert: Low Ethereum Gas Price Detected! ⚠️\n"
-                                    f"Current Low Gas Price: {low_gas} gwei 🟢"
-                                )
-                                # Send an alert to all subscribed users
-                                for chat_id in subscribers:
+                            for chat_id in subscribers:
+                                # Retrieve the last sent prices or use default thresholds
+                                last_prices = last_sent_prices.get(
+                                    chat_id, {"low": 0, "average": 0, "fast": 0})
+                                current_thresholds = user_thresholds.get(
+                                    chat_id, {"green": 30, "yellow": 35})
+
+                                # Check if the price has changed significantly
+                                if (abs(new_low_gas - last_prices["low"]) > UPDATE_THRESHOLD or
+                                    abs(new_average_gas - last_prices["average"]) > UPDATE_THRESHOLD or
+                                        abs(new_fast_gas - last_prices["fast"]) > UPDATE_THRESHOLD):
+
+                                    # Update the last sent prices for this chat_id
+                                    last_sent_prices[chat_id] = {
+                                        "low": new_low_gas, "average": new_average_gas, "fast": new_fast_gas}
+
+                                    # Prepare the alert text
+                                    alert_text = (
+                                        f"⚠️ Alert: Ethereum Gas Price Update! ⚠️\n"
+                                        f"Low: {new_low_gas} gwei {'🟢' if new_low_gas <= current_thresholds['green'] else '🔴'}\n"
+                                        f"Average: {new_average_gas} gwei {'🟢' if new_average_gas <= current_thresholds['green'] else '🔴'}\n"
+                                        f"Fast: {new_fast_gas} gwei {'🟢' if new_fast_gas <= current_thresholds['green'] else '🔴'}"
+                                    )
+
+                                    # Send the alert to this subscriber
                                     try:
                                         await bot.send_message(chat_id=chat_id, text=alert_text)
                                     except aiohttp.ClientError as e:
                                         logger.error(
                                             "Failed to send alert to %s: %s", chat_id, e)
+                                else:
+                                    logger.info(
+                                        "No significant price change for chat %s. No alert sent.", chat_id)
+
                     else:
                         logger.error(
                             "Failed to retrieve gas data: %s", response.status)
 
             # Wait for 60 seconds before checking again
-            await asyncio.sleep(60)  # Sleep for 60 seconds
+            await asyncio.sleep(60)
 
         except asyncio.CancelledError:
             # Handle the cancellation
@@ -230,6 +334,7 @@ async def start(update, context):
         "/unsubscribe - Unsubscribe from alerts\n"
         "/thresholds - Get the current alert thresholds\n"
         "/set_thresholds - Set the alert thresholds\n"
+        "/track - Start temporary tracking for a specified duration (max 10 minutes)\n"
         "Or simply send '?' for help."
     )
     await update.message.reply_text(start_text)
