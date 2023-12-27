@@ -125,7 +125,7 @@ async def handle_updates(queue: Queue):
             await thresholds(update, None)
         elif text.startswith('/set_thresholds'):
             await set_thresholds(update, None)
-        elif text == '/help' or text == '?':
+        elif text in ('/help', '?'):
             await help_command(update, None)
 
 
