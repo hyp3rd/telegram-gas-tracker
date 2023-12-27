@@ -1,5 +1,7 @@
 # Ethereum Gas Tracker Bot
 
+[![Pylint](https://github.com/hyp3rd/telegram-gas-tracker/actions/workflows/pylint.yml/badge.svg)](https://github.com/hyp3rd/telegram-gas-tracker/actions/workflows/pylint.yml)
+
 A simple Telegram bot that tracks Ethereum gas prices using the Etherscan API.
 
 ## Features
