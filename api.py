@@ -15,11 +15,11 @@ config = ConfigHandler()
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    results = {"telegram_api": False, "external_resources": {}}
+    results = {}
 
     # Check Telegram Bot API connectivity
     try:
-        bot = Bot(token=config.telegram_token())
+        bot = Bot(token=config.telegram_token)
         bot_info = await bot.get_me()
         results["telegram_api"] = bot_info is not None
     except TelegramError:
@@ -29,18 +29,19 @@ async def health_check():
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                config.etherscan_api_url(),
+                config.etherscan_api_url,
                 params={"module": "stats", "action": "ping"},
                 timeout=5,
             )
-            results["etherscan_api"] = (
-                response.status_code == 200 and response.json().get("message") == "OK"
-            )
+            results["etherscan_api"] = response.status_code == 200
+
     except httpx.RequestError:
         results["etherscan_api"] = False
 
-    # Overall health status
-    if all(results.values()):
+    # Determine the overall health status based on individual checks
+    overall_health = all(status is True for status in results.values())
+
+    if overall_health:
         return {"status": "healthy", "details": results}
 
     raise HTTPException(
