@@ -25,7 +25,12 @@ class ConfigHandler(metaclass=SingletonMeta):
             f"https://api.telegram.org/bot{self._telegram_token}/getMe"
         )
         self._etherscan_api_key = os.getenv("ETHERSCAN_API_KEY")
-        self._etherscan_api_url = f"https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey={self._etherscan_api_key}"
+        self._etherscan_api_url = (
+            f"https://api.etherscan.io/api?apikey={self._etherscan_api_key}"
+        )
+        self._etherscan_gastracker_url = (
+            f"{self._etherscan_api_url}&module=gastracker&action=gasoracle"
+        )
 
     @property
     def telegram_token(self):
@@ -46,6 +51,11 @@ class ConfigHandler(metaclass=SingletonMeta):
     def etherscan_api_url(self):
         """Return the Etherscan API URL."""
         return self._etherscan_api_url
+
+    @property
+    def etherscan_gastracker_url(self):
+        """Return the Etherscan Gas Tracker URL."""
+        return self._etherscan_gastracker_url
 
     def __repr__(self):
         """Return a string representation of the object."""

@@ -46,7 +46,7 @@ UPDATE_THRESHOLD = (
 async def gas(update, context):
     """Get and send the current Ethereum gas prices asynchronously."""
     async with aiohttp.ClientSession() as session:
-        async with session.get(config.etherscan_api_url, timeout=60) as response:
+        async with session.get(config.etherscan_gastracker_url, timeout=60) as response:
             # Ensure the API call was successful
             if response.status == 200:
                 data = await response.json()
@@ -248,7 +248,7 @@ async def start_temporary_tracking(chat_id, duration):
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    config.etherscan_api_url, timeout=60
+                    config.etherscan_gastracker_url, timeout=60
                 ) as response:
                     if response.status == 200:
                         data = await response.json()
@@ -306,7 +306,7 @@ async def monitor_gas_prices():
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    config.etherscan_api_url, timeout=60
+                    config.etherscan_gastracker_url, timeout=60
                 ) as response:
                     if response.status == 200:
                         data = await response.json()
