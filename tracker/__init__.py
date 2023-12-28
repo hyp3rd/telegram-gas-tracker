@@ -1,7 +1,8 @@
 """tracker module."""
 
 try:
-    from tracker.config import ConfigHandler
-    from tracker.logger import Logger
+    import tracker.config
+    import tracker.core
+    import tracker.logger
 except ImportError as ex:
     raise ex
