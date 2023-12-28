@@ -3,7 +3,7 @@ import os
 
 from dotenv import load_dotenv
 
-from tracker.core import SingletonMeta
+from core import SingletonMeta
 
 
 class ConfigHandler(

@@ -1,7 +1,6 @@
 """Create a logger for the application.""" ""
 import logging
 from logging import StreamHandler
-from logging.handlers import RotatingFileHandler
 
 import tracker.logger.formatter as log_formatter
 from tracker.config import ConfigHandler
@@ -42,7 +41,7 @@ class Logger(logging.Logger):
         logging.root.handlers = []
 
     @staticmethod
-    def generate_handler() -> RotatingFileHandler | StreamHandler:
+    def generate_handler() -> StreamHandler:
         """generate the handler for any external logger"""
         level = getattr(logging, config.log_level.upper(), None)
 

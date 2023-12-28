@@ -11,8 +11,8 @@ from telegram.ext import Updater
 from uvicorn import Config, Server
 
 from api import app
+from core import SingletonMeta
 from tracker.config import ConfigHandler
-from tracker.core import SingletonMeta
 from tracker.logger import Logger
 
 # pylint: disable=unused-argument
