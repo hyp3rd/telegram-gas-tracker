@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException
 from telegram import Bot
 from telegram.error import TelegramError
 
-from config import ConfigHandler
+from tracker.config import ConfigHandler
 
 app = FastAPI()
 

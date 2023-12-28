@@ -34,7 +34,7 @@ A simple Telegram bot that tracks Ethereum gas prices using the Etherscan API.
 1. Clone this repository.
 2. Copy `.env-example` to `.env` and fill in the required values.
 3. Install the required Python packages: `pip install -r requirements.txt`
-4. Run the bot: `python main.py`
+4. Run the bot: `python tracker.py`
 
 ## Usage
 
