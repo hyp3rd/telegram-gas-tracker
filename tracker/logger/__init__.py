@@ -1,6 +1,6 @@
 """logger module."""
 
 try:
-    from .logger import Logger, log_formatter
+    from .logger import Logger
 except ImportError as ex:
     raise ex
