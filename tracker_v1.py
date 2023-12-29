@@ -1,17 +1,13 @@
 """Simple Bot to track Ethereum gas prices on Etherscan"""
 import asyncio
+import signal
 from asyncio.queues import Queue
+from threading import Thread
 
 import aiohttp
 import telegram.error as telegram_error
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    InvalidCallbackData,
-    Updater,
-    ExtBot,
-    # ContextTypes,
-)
+from telegram import Bot
+from telegram.ext import Updater
 from uvicorn import Config, Server
 
 from api import app
@@ -36,17 +32,10 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
 
         # Create an asyncio Queue
         self.update_queue: Queue = asyncio.Queue()
+
         # Initialize the Bot and Updater
-        self.application = (
-            Application.builder()
-            .updater(
-                Updater(
-                    bot=ExtBot(self.config.telegram_token),
-                    update_queue=self.update_queue,
-                )
-            )
-            .build()
-        )
+        self.bot = Bot(self.config.telegram_token)
+        self.updater = Updater(self.bot, self.update_queue)
 
         self.subscribers = set()
         self.user_thresholds = {}  # {chat_id: {"green": int, "yellow": int}}
@@ -54,6 +43,91 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
         self.last_sent_prices = (
             {}
         )  # {chat_id: {"low": int, "average": int, "fast": int}}
+
+    async def main(self):
+        """Start the bot and the gas price monitor."""
+        loop = asyncio.get_running_loop()
+
+        # Configure Uvicorn server
+        server_config = Config(app=app, host="0.0.0.0", port=8000, loop=loop)
+        server = Server(server_config)
+
+        # Handle shutdown signals
+        signals = (signal.SIGTERM, signal.SIGINT)
+        for s in signals:
+            loop.add_signal_handler(
+                s, lambda s=s: asyncio.create_task(self.shutdown(s, server, loop))
+            )
+
+        def run_server():
+            """Run the Uvicorn server in a separate thread."""
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(server.serve())
+            loop.close()
+
+        try:
+            async with self.updater:
+                # Tasks to run in parallel
+                tasks = [
+                    asyncio.create_task(self.updater.start_polling(), name="updater"),
+                    asyncio.create_task(self.monitor_gas_prices(), name="gas_monitor"),
+                    asyncio.create_task(
+                        self.handle_updates(self.update_queue), name="update_handler"
+                    ),
+                ]
+
+                # Run the Uvicorn server in a separate thread
+                server_thread = Thread(target=run_server)
+                server_thread.start()
+
+                try:
+                    # Wait for all tasks to complete (they won't unless canceled)
+                    await asyncio.gather(*tasks)
+                except asyncio.CancelledError:
+                    # Handle the cancellation of the asyncio.gather
+                    self.logger.warning("The running tasks were cancelled")
+        except asyncio.CancelledError:
+            self.logger.warning(
+                "CancelledError caught in main() - during updater operation"
+            )
+
+        # Ensure the server thread stops when the main tasks are cancelled
+        server_thread.join()
+
+    async def shutdown(self, sig: signal, server: Server, loop):
+        """Clean up tasks and shut down the bot gracefully."""
+        self.logger.warning("Received exit signal %s", sig.name)
+
+        # Stop the updater if it's running
+        if self.updater.running:
+            await self.updater.stop()
+
+        # Shut down the server if it's defined
+        if server:
+            server.should_exit = True
+
+        # Cancel all outstanding tasks
+        tasks = [t for t in asyncio.all_tasks(loop) if t is not asyncio.current_task()]
+
+        self.logger.info("Cancelling %s outstanding tasks", len(tasks))
+
+        for task in tasks:
+            # Log the task being cancelled
+            self.logger.info("Cancelling task: %s", task.get_name())
+            task.cancel()
+            try:
+                await task  # Wait for the task to be cancelled
+            except asyncio.CancelledError:
+                pass  # Task cancellation is expected
+
+        self.logger.info("All tasks have been cancelled")
+
+        # Wait for all tasks to be cancelled
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+        loop.stop()
+        self.logger.info("Shutdown complete")
 
     async def start(self, update, context):
         """Send a message when the command /start is issued."""
@@ -131,7 +205,7 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
 
         # Send the message
         try:
-            await self.application.bot.send_message(chat_id=chat_id, text=text)
+            await self.bot.send_message(chat_id=chat_id, text=text)
         except aiohttp.ClientError as e:
             self.logger.error("Failed to send message to %s: %s", chat_id, e)
 
@@ -312,8 +386,8 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
 
     async def set_thresholds(self, update, context):
         """Set the alert thresholds."""
+        chat_id = update.message.chat_id
         try:
-            chat_id = update.message.chat_id
             # Extract green and yellow thresholds from the message
             args = update.message.text.split()[1:]  # e.g., /set_thresholds 20 40
             green_threshold, yellow_threshold = map(int, args)
@@ -324,14 +398,13 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
                 "yellow": yellow_threshold,
             }
             text = f"Thresholds updated successfully:\n🟢 Green (Low): {green_threshold} gwei\n🟡 Yellow (Medium): {yellow_threshold} gwei"
-        except (ValueError, IndexError, AttributeError):
+        except (ValueError, IndexError):
             text = (
                 "Invalid format. Use the command like this:\n"
                 "/set_thresholds <green_threshold> <yellow_threshold>\n"
                 "For example: /set_thresholds 20 40"
             )
-        if update.message.reply_text:
-            await update.message.reply_text(text)
+        await update.message.reply_text(text)
 
     async def subscribe(self, update, context):
         """Subscribe the user to gas price alerts."""
@@ -393,59 +466,35 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
                 "Exception handling the help command: %s", ex, exc_info=True
             )
 
-    async def main(self):
-        """Start the bot and the gas price monitor."""
-        loop = asyncio.new_event_loop()
+    def error(self, update, context):
+        """Log errors caused by updates."""
+        self.logger.warning('Update "%s" caused error "%s"', update, context.error)
 
-        # Configure Uvicorn server
-        server_config = Config(app=app, host="0.0.0.0", port=8000, loop=loop)
-        server = Server(server_config)
-
-        try:
-            self.logger.info("Starting the bot")
-            await self.application.initialize()
-
-            # Add handlers for Telegram commands
-            self.application.add_handler(CommandHandler("help", self.help_command))
-            self.application.add_handler(CommandHandler("start", self.start))
-            self.application.add_handler(CommandHandler("gas", self.gas))
-            self.application.add_handler(CommandHandler("subscribe", self.subscribe))
-            self.application.add_handler(
-                CommandHandler("unsubscribe", self.unsubscribe)
-            )
-            self.application.add_handler(CommandHandler("thresholds", self.thresholds))
-            self.application.add_handler(
-                CommandHandler("set_thresholds", self.set_thresholds)
-            )
-            self.application.add_handler(CommandHandler("track", self.track))
-            self.application.add_error_handler(self.error_handler)
-
-            self.logger.info("Handlers initialized")
-
-            # Run application and webserver together
-            async with self.application.updater:
-                await self.application.start()
-                asyncio.create_task(self.monitor_gas_prices())
-                await self.application.updater.start_polling()
-                await server.serve()
-                await self.application.updater.stop()
-                await self.application.stop()
-
-        except (
-            asyncio.CancelledError,
-            KeyboardInterrupt,
-            AttributeError,
-            InvalidCallbackData,
-        ):
-            self.logger.exception("The application was cancelled")
-
-        # Ensure the server thread stops when the main tasks are cancelled
-        finally:
-            server.should_exit = True  # Stop the Uvicorn server
-
-    async def error_handler(self, update, context):
-        """Handle errors."""
-        self.logger.error("Exception while handling an update:", exc_info=context.error)
+    async def handle_updates(self, queue: Queue):
+        """Handle updates"""
+        while True:
+            update = await queue.get()
+            if update is None:
+                break
+            if update.message is None or update.message.text is None:
+                continue
+            text = update.message.text
+            if text == "/start":
+                await self.start(update, None)
+            elif text == "/gas":
+                await self.gas(update, None)
+            elif text == "/subscribe":
+                await self.subscribe(update, None)
+            elif text == "/unsubscribe":
+                await self.unsubscribe(update, None)
+            elif text == "/thresholds":
+                await self.thresholds(update, None)
+            elif text.startswith("/set_thresholds"):
+                await self.set_thresholds(update, None)
+            elif text.startswith("/track"):
+                await self.track(update, None)
+            elif text in ("/help", "?"):
+                await self.help_command(update, None)
 
 
 if __name__ == "__main__":
