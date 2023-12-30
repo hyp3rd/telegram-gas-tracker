@@ -1,0 +1,18 @@
+[MAIN]
+
+# Use multiple processes to speed up Pylint. Specifying 0 will auto-detect the
+# number of processors available to use.
+jobs=0
+
+# Minimum supported python version
+py-version = 3.10.2
+
+[MESSAGES CONTROL]
+
+disable=
+    no-name-in-module
+
+[FORMAT]
+
+# Maximum number of characters on a single line.
+max-line-length=120

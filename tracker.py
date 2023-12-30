@@ -3,19 +3,18 @@ import asyncio
 from asyncio.queues import Queue
 
 import aiohttp
-from telegram import MenuButtonCommands, BotCommand, Update
 import telegram.error as telegram_error
+from telegram import BotCommand, MenuButtonCommands, Update
 from telegram.ext import (
     Application,
-    CommandHandler,
-    InvalidCallbackData,
-    Updater,
-    ExtBot,
-    ConversationHandler,
-    MessageHandler,
     CallbackContext,
+    CommandHandler,
+    ConversationHandler,
+    ExtBot,
+    InvalidCallbackData,
+    MessageHandler,
+    Updater,
     filters,
-    # ContextTypes,
 )
 from uvicorn import Config, Server
 
@@ -25,7 +24,6 @@ from tracker.config import ConfigHandler
 from tracker.logger import Logger
 
 # pylint: disable=unused-argument
-# pylint: disable=line-too-long
 
 # Define states
 AWAITING_DURATION = 1
@@ -397,7 +395,7 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
         current_thresholds = self.user_thresholds.get(
             chat_id, {"green": 30, "yellow": 35}
         )
-        text = f"Current alert thresholds:\n{GREEN_EMOJI} Green (Low): {current_thresholds['green']} gwei\n{YELLOW_EMOJI} Yellow (Medium): {current_thresholds['yellow']} gwei"
+        text = f"Current thresholds:\n{GREEN_EMOJI} Low: {current_thresholds['green']} gwei\n{YELLOW_EMOJI} Medium: {current_thresholds['yellow']} gwei"  # pylint: disable=line-too-long
         await update.message.reply_text(text)
 
     async def ask_for_tracking_duration(self, update: Update, context: CallbackContext):
@@ -462,7 +460,7 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
                 }
 
                 await update.message.reply_text(
-                    f"Thresholds updated successfully:\n{GREEN_EMOJI} Green (Low): {green_threshold} gwei\n{YELLOW_EMOJI} Yellow (Medium): {yellow_threshold} gwei"
+                    f"Thresholds updated:\n{GREEN_EMOJI} Low: {green_threshold} gwei\n{YELLOW_EMOJI} Medium: {yellow_threshold} gwei"  # pylint: disable=line-too-long
                 )
             else:
                 await update.message.reply_text(
