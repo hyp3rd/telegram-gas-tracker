@@ -226,3 +226,5 @@ tags
 
 ## Project-specific ignores
 tools/
+tracker_v1.py
+.git/
