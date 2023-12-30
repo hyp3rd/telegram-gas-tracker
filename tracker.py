@@ -3,6 +3,7 @@ import asyncio
 from asyncio.queues import Queue
 
 import aiohttp
+from telegram import MenuButtonCommands, BotCommand, Update
 import telegram.error as telegram_error
 from telegram.ext import (
     Application,
@@ -10,6 +11,10 @@ from telegram.ext import (
     InvalidCallbackData,
     Updater,
     ExtBot,
+    ConversationHandler,
+    MessageHandler,
+    CallbackContext,
+    filters,
     # ContextTypes,
 )
 from uvicorn import Config, Server
@@ -21,6 +26,13 @@ from tracker.logger import Logger
 
 # pylint: disable=unused-argument
 # pylint: disable=line-too-long
+
+# Define states
+AWAITING_DURATION = 1
+AWAITING_THRESHOLDS = 2
+GREEN_EMOJI = "🟢"
+YELLOW_EMOJI = "🟡"
+RED_EMOJI = "🔴"
 
 
 class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-attributes
@@ -58,6 +70,52 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
     async def start(self, update, context):
         """Send a message when the command /start is issued."""
         await self.help_command(update, context)
+
+    async def set_menu_button(self, chat_id=None):
+        """Set the menu button."""
+        try:
+            help_command = BotCommand(command="help", description="Get Help")
+            gas_command = BotCommand(
+                command="gas", description="Fetch the current GAS fees"
+            )
+            subscribe_command = BotCommand(
+                command="subscribe", description="Subscribe to GAS Alerts"
+            )
+            unsubscribe_command = BotCommand(
+                command="unsubscribe", description="Unsubscribe to GAS Alerts"
+            )
+            thresholds_command = BotCommand(
+                command="thresholds", description="Show the current thresholds"
+            )
+            set_thresholds_command = BotCommand(
+                command="set_thresholds", description="Set the custom thresholds"
+            )
+            track_command = BotCommand(
+                command="track", description="Track the current GAS fees"
+            )
+
+            commands_set = await self.application.bot.set_my_commands(
+                [
+                    help_command,
+                    gas_command,
+                    subscribe_command,
+                    unsubscribe_command,
+                    thresholds_command,
+                    set_thresholds_command,
+                    track_command,
+                ]
+            )
+            self.logger.info("Commands set successfully: %s", commands_set)
+            await self.application.bot.set_chat_menu_button(
+                chat_id=chat_id, menu_button=MenuButtonCommands()
+            )
+            self.logger.info("Menu button set successfully")
+        except (
+            telegram_error.BadRequest,
+            telegram_error.TelegramError,
+            TypeError,
+        ) as e:
+            self.logger.error("Failed to set menu button: %s", e, exc_info=True)
 
     async def fetch_gas_prices(self):
         """Fetch the current Ethereum gas prices and return them."""
@@ -100,30 +158,30 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
     ):
         """Construct and send a message with the current gas prices."""
         low_emoji = (
-            "🟢"
+            GREEN_EMOJI
             if low_gas <= thresholds["green"]
-            else "🟡"
+            else YELLOW_EMOJI
             if low_gas <= thresholds["yellow"]
-            else "🔴"
+            else RED_EMOJI
         )
         average_emoji = (
-            "🟢"
+            GREEN_EMOJI
             if average_gas <= thresholds["green"]
-            else "🟡"
+            else YELLOW_EMOJI
             if average_gas <= thresholds["yellow"]
-            else "🔴"
+            else RED_EMOJI
         )
         fast_emoji = (
-            "🟢"
+            GREEN_EMOJI
             if fast_gas <= thresholds["green"]
-            else "🟡"
+            else YELLOW_EMOJI
             if fast_gas <= thresholds["yellow"]
-            else "🔴"
+            else RED_EMOJI
         )
 
         # Create the message text with the appropriate emojis
         text = (
-            f"🚀 Current Ethereum Gas Prices 🚀\n"
+            f"▶️ *Current ETH Gas Prices*\n"
             f"Low: {low_gas} gwei {low_emoji}\n"
             f"Average: {average_gas} gwei {average_emoji}\n"
             f"Fast: {fast_gas} gwei {fast_emoji}"
@@ -131,7 +189,9 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
 
         # Send the message
         try:
-            await self.application.bot.send_message(chat_id=chat_id, text=text)
+            await self.application.bot.send_message(
+                chat_id=chat_id, text=text, parse_mode="Markdown"
+            )
         except aiohttp.ClientError as e:
             self.logger.error("Failed to send message to %s: %s", chat_id, e)
 
@@ -273,6 +333,7 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
 
     async def track(self, update, context):
         """Start temporary tracking for a specified duration."""
+        self.logger.info("Received track command")
         chat_id = update.message.chat_id
         try:
             # Extract the duration from the message
@@ -310,29 +371,6 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
         else:
             await update.message.reply_text("Failed to retrieve current gas prices.")
 
-    async def set_thresholds(self, update, context):
-        """Set the alert thresholds."""
-        try:
-            chat_id = update.message.chat_id
-            # Extract green and yellow thresholds from the message
-            args = update.message.text.split()[1:]  # e.g., /set_thresholds 20 40
-            green_threshold, yellow_threshold = map(int, args)
-
-            # Update the user's thresholds
-            self.user_thresholds[chat_id] = {
-                "green": green_threshold,
-                "yellow": yellow_threshold,
-            }
-            text = f"Thresholds updated successfully:\n🟢 Green (Low): {green_threshold} gwei\n🟡 Yellow (Medium): {yellow_threshold} gwei"
-        except (ValueError, IndexError, AttributeError):
-            text = (
-                "Invalid format. Use the command like this:\n"
-                "/set_thresholds <green_threshold> <yellow_threshold>\n"
-                "For example: /set_thresholds 20 40"
-            )
-        if update.message.reply_text:
-            await update.message.reply_text(text)
-
     async def subscribe(self, update, context):
         """Subscribe the user to gas price alerts."""
         chat_id = update.message.chat_id
@@ -359,24 +397,105 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
         current_thresholds = self.user_thresholds.get(
             chat_id, {"green": 30, "yellow": 35}
         )
-        text = f"Current alert thresholds:\n🟢 Green (Low): {current_thresholds['green']} gwei\n🟡 Yellow (Medium): {current_thresholds['yellow']} gwei"
+        text = f"Current alert thresholds:\n{GREEN_EMOJI} Green (Low): {current_thresholds['green']} gwei\n{YELLOW_EMOJI} Yellow (Medium): {current_thresholds['yellow']} gwei"
         await update.message.reply_text(text)
+
+    async def ask_for_tracking_duration(self, update: Update, context: CallbackContext):
+        """Ask the user for the duration."""
+        await update.message.reply_text(
+            "*Please enter the duration in minutes (max 10):*", parse_mode="Markdown"
+        )
+        return AWAITING_DURATION
+
+    async def received_tracking_duration(
+        self, update: Update, context: CallbackContext
+    ):
+        """Handle the received duration and start tracking."""
+        try:
+            chat_id = update.message.chat_id
+            duration_text = update.message.text
+            duration = int(duration_text)
+
+            # Validate the duration...
+            if 0 < duration <= 10:
+                await update.message.reply_text(
+                    f"▶️ Tracking for *{duration}* minutes. You will receive alerts *every 30 seconds.*",
+                    parse_mode="Markdown",
+                )
+                # delay between answers
+                await asyncio.sleep(1.5)
+                # Start temporary tracking
+                await self.start_temporary_tracking(chat_id, duration)
+            else:
+                await update.message.reply_text(
+                    "Invalid duration. Please specify a number between 1 and 10."
+                )
+
+        except ValueError:
+            await update.message.reply_text(
+                "Invalid format. Please enter a number for the duration."
+            )
+
+        return ConversationHandler.END
+
+    async def ask_for_thresholds(self, update: Update, context: CallbackContext):
+        """Ask the user for the alert thresholds."""
+        await update.message.reply_text(
+            "Enter the thresholds to consider the price *high* and *low* separated by a single space\ne.g. `25 30`:",
+            parse_mode="Markdown",
+        )
+        return AWAITING_THRESHOLDS
+
+    async def received_thresholds(self, update: Update, context: CallbackContext):
+        """Set the alert thresholds."""
+        try:
+            chat_id = update.message.chat_id
+            thresholds = update.message.text.split()
+            green_threshold, yellow_threshold = map(int, thresholds)
+
+            # Validate and use the thresholds
+            if 0 < green_threshold < yellow_threshold:
+                # Update the user's thresholds
+                self.user_thresholds[chat_id] = {
+                    "green": green_threshold,
+                    "yellow": yellow_threshold,
+                }
+
+                await update.message.reply_text(
+                    f"Thresholds updated successfully:\n{GREEN_EMOJI} Green (Low): {green_threshold} gwei\n{YELLOW_EMOJI} Yellow (Medium): {yellow_threshold} gwei"
+                )
+            else:
+                await update.message.reply_text(
+                    "Please enter valid numbers with green threshold less than yellow threshold."
+                )
+
+        except (ValueError, IndexError, AttributeError):
+            await update.message.reply_text(
+                "Invalid format. Use the command like this:\n"
+                "/set_thresholds <green_threshold> <yellow_threshold>\n"
+                "For example: /set_thresholds 20 40"
+            )
+        return ConversationHandler.END
+
+    async def cancel(self, update: Update, context: CallbackContext):
+        """Cancel and end the conversation."""
+        await update.message.reply_text("Operation cancelled.")
+        return ConversationHandler.END
 
     async def help_command(self, update, context):
         """Send a message when the command /help is issued or '?' is received."""
         help_text = (
-            "🤖 *Gas Tracker Bot Commands:*\n"
+            "👁️‍🗨️ *ETH GAS Tracker:*\n"
             "/start - Start interacting with the bot\n"
-            "/gas - Get the current Ethereum gas prices\n"
+            "/gas - Get the current ETH gas prices\n"
             "/subscribe - Subscribe to low gas price alerts\n"
             "/unsubscribe - Unsubscribe from gas price alerts\n"
             "/thresholds - Get the current alert thresholds\n"
             "/set_thresholds - Set the alert thresholds\n"
-            "/track - Start temporary tracking for a specified duration (max 10 minutes)\n"
-            "/help - Show this help message\n"
-            "Or just send '?' anytime you need help.\n\n"
+            "/track - Track the gas fees for a specified duration (max 10 min)\n"
+            "/help - Show this help message\n\n"
             "To receive alerts, use the /subscribe command. When the gas price is low, "
-            "you'll receive a notification!"
+            "you'll receive a notification. You can also set custom alert thresholds."
         )
         try:
             # Escape underscores for markdown
@@ -405,6 +524,38 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
             self.logger.info("Starting the bot")
             await self.application.initialize()
 
+            # Define conversation handler for '/track' command
+            track_conv_handler = ConversationHandler(
+                entry_points=[CommandHandler("track", self.ask_for_tracking_duration)],
+                states={
+                    AWAITING_DURATION: [
+                        MessageHandler(
+                            filters.TEXT & ~filters.COMMAND,
+                            self.received_tracking_duration,
+                        )
+                    ],
+                },
+                fallbacks=[CommandHandler("cancel", self.cancel)],
+            )
+
+            thresholds_conv_handler = ConversationHandler(
+                entry_points=[
+                    CommandHandler("set_thresholds", self.ask_for_thresholds)
+                ],
+                states={
+                    AWAITING_THRESHOLDS: [
+                        MessageHandler(
+                            filters.TEXT & ~filters.COMMAND, self.received_thresholds
+                        )
+                    ],
+                },
+                fallbacks=[CommandHandler("cancel", self.cancel)],
+            )
+
+            # Add conversation handlers to the application
+            self.application.add_handler(track_conv_handler)
+            self.application.add_handler(thresholds_conv_handler)
+
             # Add handlers for Telegram commands
             self.application.add_handler(CommandHandler("help", self.help_command))
             self.application.add_handler(CommandHandler("start", self.start))
@@ -414,13 +565,11 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
                 CommandHandler("unsubscribe", self.unsubscribe)
             )
             self.application.add_handler(CommandHandler("thresholds", self.thresholds))
-            self.application.add_handler(
-                CommandHandler("set_thresholds", self.set_thresholds)
-            )
-            self.application.add_handler(CommandHandler("track", self.track))
             self.application.add_error_handler(self.error_handler)
 
             self.logger.info("Handlers initialized")
+
+            await self.set_menu_button()
 
             # Run application and webserver together
             async with self.application.updater:
@@ -445,7 +594,14 @@ class Tracker(metaclass=SingletonMeta):  # pylint: disable=too-many-instance-att
 
     async def error_handler(self, update, context):
         """Handle errors."""
-        self.logger.error("Exception while handling an update:", exc_info=context.error)
+        self.logger.error('Update "%s" caused error "%s"', update, context.error)
+        if update:
+            try:
+                await update.message.reply_text(
+                    "An error occurred. Please try again later."
+                )
+            except Exception as e:  # pylint: disable=broad-except
+                self.logger.error("Error while sending error message to user: %s", e)
 
 
 if __name__ == "__main__":
