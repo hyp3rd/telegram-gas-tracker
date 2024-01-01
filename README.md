@@ -11,6 +11,7 @@ A simple Telegram bot that tracks Ethereum gas prices using the Etherscan API.
 - Subscribe to alerts for low gas prices.
 - Customize gas price alert thresholds.
 - Track the gas price for a specific amount of minutes.
+- Track a wallet address and receive alerts when a transaction is sent or received.
 - API with health check endpoint.
 
 ## Requirements
