@@ -10,7 +10,8 @@ py-version = 3.10.2
 [MESSAGES CONTROL]
 
 disable=
-    no-name-in-module
+    no-name-in-module,
+    unused-argument,
 
 [FORMAT]
 
