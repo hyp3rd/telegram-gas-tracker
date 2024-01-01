@@ -96,7 +96,9 @@ class WalletTracker(metaclass=SingletonMeta):
                         return new_last_checked_block
         return None
 
-    async def __process_transaction(self, tx, wallet_address):
+    async def __process_transaction(
+        self, tx, wallet_address
+    ):  # pylint: disable=too-many-locals
         """Process a transaction and return the message text."""
         # Common transaction details
         from_address = tx["from"]
@@ -186,10 +188,10 @@ class WalletTracker(metaclass=SingletonMeta):
                     data = await response.json()
                     # Extract the price of Ethereum in USD
                     return data["ethereum"]["usd"]
-                else:
-                    self.logger.error(
-                        "Failed to retrieve ETH price, status: %s", response.status
-                    )
+
+                self.logger.error(
+                    "Failed to retrieve ETH price, status: %s", response.status
+                )
 
         return None  # Return None if there was an error
 
