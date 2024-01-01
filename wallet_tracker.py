@@ -49,7 +49,9 @@ class WalletTracker(metaclass=SingletonMeta):
                             chat_id,
                             new_last_checked_block,
                         )
-                await asyncio.sleep(60)  # Check every minute, adjust as needed.
+                await asyncio.sleep(
+                    AwaitInterval.BLOCK_TIME
+                )  # Check every minute, adjust as needed.
             except asyncio.CancelledError:
                 # Handle the cancellation
                 self.logger.warning("Wallet Tracker monitor task was cancelled")

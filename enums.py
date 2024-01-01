@@ -18,3 +18,4 @@ class AwaitInterval(Enum):
     THRESHOLDS = 2
     WALLET_ADDRESS = 3
     WALLET_UNTRACKED = 4
+    BLOCK_TIME = 10
