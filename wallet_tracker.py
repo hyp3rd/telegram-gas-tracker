@@ -264,5 +264,39 @@ class WalletTracker(metaclass=SingletonMeta):
         return None  # Return None if the fetch was unsuccessful
 
     def __is_valid_wallet(self, wallet_address):
-        # Implement your validation logic, for example, checking address length and prefix
+        """Check if the wallet address is valid."""
         return len(wallet_address) == 42 and wallet_address.startswith("0x")
+
+    async def ask_for_wallet_untrack(self, update: Update, context: CallbackContext):
+        """Ask the user for the wallet address to stop tracking."""
+        await update.message.reply_text(
+            "Please enter the wallet address you want to stop tracking:"
+        )
+        return AwaitInterval.WALLET_UNTRACKED
+
+    async def received_wallet_untrack(self, update: Update, context: CallbackContext):
+        """Handle the received wallet address and stop tracking it."""
+        wallet_address = update.message.text.strip()
+        chat_id = update.message.chat_id
+
+        # Check if the wallet is currently being tracked
+        if (
+            wallet_address in self.tracked_wallets
+            and self.tracked_wallets[wallet_address][0] == chat_id
+        ):
+            # Stop tracking the wallet
+            del self.tracked_wallets[wallet_address]
+            self.logger.info(
+                "Stopped tracking wallet %s for chat %s.", wallet_address, chat_id
+            )
+            await update.message.reply_text(
+                f"✅ Successfully stopped tracking wallet: `{wallet_address}`",
+                parse_mode="Markdown",
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ The wallet `{wallet_address}` is not being tracked, or you do not have permissions.",
+                parse_mode="Markdown",
+            )
+
+        return ConversationHandler.END

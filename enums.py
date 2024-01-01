@@ -17,3 +17,4 @@ class AwaitInterval(Enum):
     TRACKING = 1
     THRESHOLDS = 2
     WALLET_ADDRESS = 3
+    WALLET_UNTRACKED = 4

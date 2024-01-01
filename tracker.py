@@ -83,6 +83,9 @@ class Tracker(metaclass=SingletonMeta):
             track_wallet_command = BotCommand(
                 command="track_wallet", description="Track a wallet"
             )
+            untrack_wallet_command = BotCommand(
+                command="untrack_wallet", description="Untrack a wallet"
+            )
 
             commands_set = await self.application.bot.set_my_commands(
                 [
@@ -94,6 +97,7 @@ class Tracker(metaclass=SingletonMeta):
                     set_thresholds_command,
                     track_command,
                     track_wallet_command,
+                    untrack_wallet_command,
                 ]
             )
             self.logger.info("Commands set successfully: %s", commands_set)
@@ -124,6 +128,8 @@ class Tracker(metaclass=SingletonMeta):
             "/thresholds - Get the current alert thresholds\n"
             "/set_thresholds - Set the alert thresholds\n"
             "/track - Track the gas fees for a specified duration (max 10 min)\n"
+            "/track_wallet - Track a wallet for new transactions\n"
+            "/untrack_wallet - Untrack a wallet\n"
             "/help - Show this help message\n\n"
             "To receive alerts, use the /subscribe command. When the gas price is low, "
             "you'll receive a notification. You can also set custom alert thresholds."
@@ -191,7 +197,7 @@ class Tracker(metaclass=SingletonMeta):
                 fallbacks=[CommandHandler("cancel", self.cancel)],
             )
             # Define conversation handler for '/track_wallet' command
-            wallet_conv_handler = ConversationHandler(
+            track_wallet_conv_handler = ConversationHandler(
                 entry_points=[
                     CommandHandler("track_wallet", wallet_tracker.ask_for_wallet)
                 ],
@@ -205,9 +211,28 @@ class Tracker(metaclass=SingletonMeta):
                 },
                 fallbacks=[CommandHandler("cancel", self.cancel)],
             )
-            self.application.add_handler(wallet_conv_handler)
+            # Define conversation handler for '/untrack_wallet' command
+            untrack_wallet_conv_handler = ConversationHandler(
+                entry_points=[
+                    CommandHandler(
+                        "untrack_wallet", wallet_tracker.ask_for_wallet_untrack
+                    )
+                ],
+                states={
+                    AwaitInterval.WALLET_UNTRACKED: [
+                        MessageHandler(
+                            filters.TEXT & ~filters.COMMAND,
+                            wallet_tracker.received_wallet_untrack,
+                        )
+                    ],
+                },
+                fallbacks=[CommandHandler("cancel", self.cancel)],
+            )
 
             # Add conversation handlers to the application
+            self.application.add_handler(track_wallet_conv_handler)
+            self.application.add_handler(untrack_wallet_conv_handler)
+
             self.application.add_handler(track_conv_handler)
             self.application.add_handler(thresholds_conv_handler)
 
