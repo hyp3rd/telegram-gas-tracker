@@ -182,7 +182,14 @@ class Tracker(metaclass=SingletonMeta):
 
         try:
             self.logger.info("Starting the bot")
-            await self.__ensure_aws_credentials()
+
+            lock = asyncio.Lock()
+            try:
+                await lock.acquire()
+                await self.__ensure_aws_credentials()
+            finally:
+                lock.release()
+
             await self.application.initialize()
 
             gas_tracker = GasTracker(application=self.application, logger=self.logger)

@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from telegram import Bot
 from telegram.error import TelegramError
 
+from release import __version__ as version
 from tracker.config import ConfigHandler
 
 app = FastAPI()
@@ -16,6 +17,7 @@ config = ConfigHandler()
 async def health_check():
     """Health check endpoint."""
     results = {}
+    results["version"] = version
 
     # Check Telegram Bot API connectivity
     try:
