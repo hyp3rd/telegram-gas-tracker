@@ -229,3 +229,4 @@ build
 tools/registry-auth
 aws_credentials
 aws_config
+.env-aws

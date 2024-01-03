@@ -8,6 +8,7 @@ class Env(Enum):
 
     DOCKER = "DOCKER"
     LOCAL = "LOCAL"
+    AWS = "AWS"
 
 
 class TrackerSemaphore(Enum):

@@ -14,7 +14,7 @@ COPY . /app
 RUN mkdir -p /root/.aws \
     # && mv aws_credentials /root/.aws/credentials \
     && mv aws_config /root/.aws/config \
-    && mv .env /root/.env && \
+    && mv .env-aws /root/.env && \
     source /root/.env
 
 RUN pip install --no-cache-dir --upgrade pip \
@@ -22,6 +22,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 
 ENV DOCKER_ENV="True"
+ENV CLOUD_PROVIDER="AWS"
 ENV UPDATE_THRESHOLD=5
 ENV LOG_LEVEL=INFO
 ENV LOG_FORMAT="%(asctime)s %(levelprefix)s %(message)s"

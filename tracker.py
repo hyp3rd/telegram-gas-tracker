@@ -1,8 +1,5 @@
 """Simple Bot to track Ethereum gas prices on Etherscan"""
 import asyncio
-
-# import os
-# import time
 from asyncio.queues import Queue
 
 import aiohttp
@@ -156,25 +153,6 @@ class Tracker(metaclass=SingletonMeta):
             self.logger.exception(
                 "Exception handling the help command: %s", ex, exc_info=True
             )
-
-    # async def __ensure_aws_credentials(self):
-    #     """Ensure the AWS credentials are loaded."""
-    #     if self.config.environment == Env.DOCKER.value:
-    #         lock = asyncio.Lock()
-    #         await lock.acquire()
-    #         try:
-    #             # wait that the aws credentials are loaded
-    #             for i in range(self.config.aws_credentials_timeout):
-    #                 self.logger.info(
-    #                     "Waiting for the AWS credentials file, attempt %s", i + 1
-    #                 )
-    #                 if os.path.isfile("/root/.aws/credentials"):
-    #                     return
-    #                 time.sleep(5)
-
-    #             raise TimeoutError("Timeout waiting for the AWS credentials")
-    #         finally:
-    #             lock.release()
 
     async def main(self):
         """Start the bot and the gas price monitor."""
