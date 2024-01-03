@@ -47,21 +47,19 @@ class ConfigHandler(
 
         self._update_threshold = int(os.getenv("UPDATE_THRESHOLD", "5"))
 
-        if AWSUtils.is_aws_environment():
-            _telegram_token_secret = AWSUtils.get_secret_value(
-                "prod/telegram-gas-tracker/TELEGRAM_TOKEN"
-            )
-            self._telegram_token = AWSUtils.get_secret_value(_telegram_token_secret)
+        self._telegram_token = os.getenv("TELEGRAM_TOKEN")
+        self._etherscan_api_key = os.getenv("ETHERSCAN_API_KEY")
 
-            _etherscan_api_key_secret = AWSUtils.get_secret_value(
-                "prod/telegram-gas-tracker/ETHERSCAN_API_KEY"
-            )
-            self._etherscan_api_key = AWSUtils.get_secret_value(
-                _etherscan_api_key_secret
-            )
-        else:
-            self._telegram_token = os.getenv("TELEGRAM_TOKEN")
-            self._etherscan_api_key = os.getenv("ETHERSCAN_API_KEY")
+        if AWSUtils.is_aws_environment():
+            # _telegram_token_secret = AWSUtils.get_secret_value(
+            #     "prod/telegram-gas-tracker/TELEGRAM_TOKEN"
+            # )
+            self._telegram_token = AWSUtils.get_secret_value(self._telegram_token)
+
+            # _etherscan_api_key_secret = AWSUtils.get_secret_value(
+            #     "prod/telegram-gas-tracker/ETHERSCAN_API_KEY"
+            # )
+            self._etherscan_api_key = AWSUtils.get_secret_value(self._etherscan_api_key)
 
         self._telegram_api_url = f"https://api.telegram.org/bot{self._telegram_token}/"
         self._etherscan_api_url = (
