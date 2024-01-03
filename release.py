@@ -9,5 +9,5 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type  # pylint: disable=invalid-name
 
-__version__ = "v0.1.7"
+__version__ = "v0.1.8"
 __author__ = "F."

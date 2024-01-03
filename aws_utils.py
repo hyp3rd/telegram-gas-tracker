@@ -9,14 +9,13 @@ from botocore.exceptions import ClientError
 
 from core import SingletonMeta
 from enums import Env
-from tracker.config import ConfigHandler
 
 
 class AWSUtils(metaclass=SingletonMeta):
     """AWSUtils class"""
 
-    def __init__(self):
-        self.config = ConfigHandler()
+    def __init__(self, config=None):
+        self.config = config
 
     @staticmethod
     def get_secret(secret_name: str, region_name: str = "eu-central-1") -> str:
@@ -42,8 +41,12 @@ class AWSUtils(metaclass=SingletonMeta):
         """Get a secret value from AWS Secrets Manager given the payload's SecretString"""
         if not secret_string:
             raise ValueError("Empty AWS Secret.")
-
-        return secret_string.split('"')[3]
+        try:
+            return secret_string.split('"')[3]
+        except IndexError:
+            # Attempt to return the secret string as is
+            # it might be a plain text secret, or from env vars
+            return secret_string
 
     async def ensure_credentials_file(self, home_dir: str = "/root"):
         """Ensure the AWS credentials are loaded."""
