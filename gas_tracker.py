@@ -7,7 +7,7 @@ from telegram import Update
 from telegram.ext import Application, CallbackContext, ConversationHandler
 
 from core import SingletonMeta
-from enums import AwaitInterval, GasTrackerState
+from enums import TrackerSemaphore, TrackerState
 from tracker.config import ConfigHandler
 from tracker.logger import Logger
 
@@ -73,25 +73,25 @@ class GasTracker(metaclass=SingletonMeta):
     ):
         """Construct and send a message with the current gas prices."""
         low_emoji = (
-            GasTrackerState.GREEN.value
+            TrackerSemaphore.GREEN.value
             if low_gas <= thresholds["green"]
-            else GasTrackerState.YELLOW.value
+            else TrackerSemaphore.YELLOW.value
             if low_gas <= thresholds["yellow"]
-            else GasTrackerState.RED.value
+            else TrackerSemaphore.RED.value
         )
         average_emoji = (
-            GasTrackerState.GREEN.value
+            TrackerSemaphore.GREEN.value
             if average_gas <= thresholds["green"]
-            else GasTrackerState.YELLOW.value
+            else TrackerSemaphore.YELLOW.value
             if average_gas <= thresholds["yellow"]
-            else GasTrackerState.RED.value
+            else TrackerSemaphore.RED.value
         )
         fast_emoji = (
-            GasTrackerState.GREEN.value
+            TrackerSemaphore.GREEN.value
             if fast_gas <= thresholds["green"]
-            else GasTrackerState.YELLOW.value
+            else TrackerSemaphore.YELLOW.value
             if fast_gas <= thresholds["yellow"]
-            else GasTrackerState.RED.value
+            else TrackerSemaphore.RED.value
         )
 
         # Create the message text with the appropriate emojis
@@ -312,7 +312,7 @@ class GasTracker(metaclass=SingletonMeta):
         current_thresholds = self.user_thresholds.get(
             chat_id, {"green": 30, "yellow": 35}
         )
-        text = f"Current thresholds:\n{GasTrackerState.GREEN.value} Low: {current_thresholds['green']} gwei\n{GasTrackerState.YELLOW.value} Medium: {current_thresholds['yellow']} gwei"  # pylint: disable=line-too-long
+        text = f"Current thresholds:\n{TrackerSemaphore.GREEN.value} Low: {current_thresholds['green']} gwei\n{TrackerSemaphore.YELLOW.value} Medium: {current_thresholds['yellow']} gwei"  # pylint: disable=line-too-long
         await update.message.reply_text(text)
 
     async def ask_for_tracking_duration(self, update: Update, context: CallbackContext):
@@ -320,7 +320,7 @@ class GasTracker(metaclass=SingletonMeta):
         await update.message.reply_text(
             "*Please enter the duration in minutes (max 10):*", parse_mode="Markdown"
         )
-        return AwaitInterval.TRACKING
+        return TrackerState.TRACKING.value
 
     async def received_tracking_duration(
         self, update: Update, context: CallbackContext
@@ -359,7 +359,7 @@ class GasTracker(metaclass=SingletonMeta):
             "Enter the thresholds to consider the price *high* and *low* separated by a single space\ne.g. `25 30`:",
             parse_mode="Markdown",
         )
-        return AwaitInterval.THRESHOLDS
+        return TrackerState.THRESHOLDS.value
 
     async def received_thresholds(self, update: Update, context: CallbackContext):
         """Set the alert thresholds."""
@@ -377,7 +377,7 @@ class GasTracker(metaclass=SingletonMeta):
                 }
 
                 await update.message.reply_text(
-                    f"Thresholds updated:\n{GasTrackerState.GREEN.value} Low: {green_threshold} gwei\n{GasTrackerState.YELLOW.value} Medium: {yellow_threshold} gwei"  # pylint: disable=line-too-long
+                    f"Thresholds updated:\n{TrackerSemaphore.GREEN.value} Low: {green_threshold} gwei\n{TrackerSemaphore.YELLOW.value} Medium: {yellow_threshold} gwei"  # pylint: disable=line-too-long
                 )
             else:
                 await update.message.reply_text(

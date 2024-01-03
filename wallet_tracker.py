@@ -3,12 +3,14 @@
 import asyncio
 
 import aiohttp
+import boto3
 from aiohttp import ClientSession
+from botocore.exceptions import ClientError
 from telegram import Update
 from telegram.ext import Application, CallbackContext, ConversationHandler
 
 from core import SingletonMeta
-from enums import AwaitInterval
+from enums import TrackerState
 from tracker.config import ConfigHandler
 from tracker.logger import Logger
 
@@ -20,42 +22,86 @@ class WalletTracker(metaclass=SingletonMeta):
 
     def __init__(self, application: Application, logger: Logger):
         """Initialize the Tracker class."""
+
         self.logger = logger
 
         # The Telegram Application
         self.application: Application = application
 
-        self.tracked_wallets = {}  # {wallet_address: (chat_id, last_checked_block)}
+        self.db = boto3.resource("dynamodb")
+        self.table = self.db.Table("tracked_wallets")
+
+        self.tracked_wallets_cache = (
+            {}
+        )  # Local cache: {wallet_address: (chat_id, last_checked_block)}
+
+        # self.tracked_wallets = {}  # {wallet_address: (chat_id, last_checked_block)}
+
+    async def update_cache(self):
+        """Update the local cache of tracked wallets."""
+        # Fetch all tracked wallets from DynamoDB and update the local cache
+        response = self.table.scan()
+        for item in response["Items"]:
+            wallet_address = item["wallet_address"]
+            chat_id = item["chat_id"]
+            last_checked_block = item["last_checked_block"]
+            self.tracked_wallets_cache[wallet_address] = (
+                chat_id,
+                int(last_checked_block),
+            )
 
     async def monitor_wallet_transactions(self):
         """Regularly check tracked wallets for new transactions."""
         self.logger.info("Starting monitor_wallet_transactions task")
         while True:
             try:
-                for wallet_address, (
-                    chat_id,
-                    last_checked_block,
-                ) in self.tracked_wallets.items():
+                # Fetch all tracked wallets from DynamoDB
+                response = (
+                    self.table.scan()
+                )  # Only fetch wallets that are being tracked
+                items = response.get("Items", [])
+
+                for item in items:
+                    wallet_address = item["wallet_address"]
+                    chat_id = item["chat_id"]
+                    last_checked_block = int(item["last_checked_block"])
+
                     self.logger.debug(
                         "Checking wallet %s for new transactions since block %s",
                         wallet_address,
                         last_checked_block,
                     )
+
                     new_last_checked_block = await self.__check_wallet_transactions(
                         wallet_address, last_checked_block, chat_id
                     )
+
                     if new_last_checked_block:
-                        self.tracked_wallets[wallet_address] = (
-                            chat_id,
-                            new_last_checked_block,
-                        )
-                await asyncio.sleep(
-                    AwaitInterval.BLOCK_TIME
-                )  # Check every minute, adjust as needed.
+                        # Update the last checked block in DynamoDB
+                        try:
+                            self.table.update_item(
+                                Key={
+                                    "wallet_address": wallet_address,
+                                },
+                                UpdateExpression="SET last_checked_block = :val",
+                                ExpressionAttributeValues={
+                                    ":val": new_last_checked_block
+                                },
+                            )
+                        except ClientError as e:
+                            self.logger.error(
+                                "Failed to update last checked block: %s", e
+                            )
+
+                await asyncio.sleep(15)  # Check every 15 seconds, adjust as needed.
+
             except asyncio.CancelledError:
                 # Handle the cancellation
                 self.logger.warning("Wallet Tracker monitor task was cancelled")
                 return  # Ensure immediate exit
+            except ClientError as e:
+                self.logger.error("Failed to fetch tracked wallets: %s", e)
+                await asyncio.sleep(15)
 
     async def __check_wallet_transactions(
         self, wallet_address, last_checked_block=0, chat_id=None
@@ -202,7 +248,7 @@ class WalletTracker(metaclass=SingletonMeta):
         await update.message.reply_text(
             "Please enter the wallet address you want to track:"
         )
-        return AwaitInterval.WALLET_ADDRESS
+        return TrackerState.WALLET_ADDRESS.value
 
     async def received_wallet(self, update: Update, context: CallbackContext):
         """Handle the received wallet address and start tracking it."""
@@ -213,7 +259,27 @@ class WalletTracker(metaclass=SingletonMeta):
             current_block = await self.__get_current_block_number()
             if current_block:
                 # Start tracking the wallet
-                self.tracked_wallets[wallet_address] = (chat_id, current_block)
+                # self.tracked_wallets[wallet_address] = (chat_id, current_block)
+                try:
+                    self.logger.debug(
+                        "Adding wallet %s for chat %s to database.",
+                        wallet_address,
+                        chat_id,
+                    )
+                    self.table.put_item(
+                        Item={
+                            "wallet_address": wallet_address,
+                            "chat_id": chat_id,
+                            "last_checked_block": current_block,
+                        }
+                    )
+                except ClientError as e:
+                    self.logger.error("Failed to add wallet to database: %s", str(e))
+                    await update.message.reply_text(
+                        "❌ Failed to add wallet to database. Please try again later."
+                    )
+                    return ConversationHandler.END
+
                 self.logger.info(
                     "Tracking wallet %s for chat %s starting at block %s.",
                     wallet_address,
@@ -274,7 +340,7 @@ class WalletTracker(metaclass=SingletonMeta):
         await update.message.reply_text(
             "Please enter the wallet address you want to stop tracking:"
         )
-        return AwaitInterval.WALLET_UNTRACKED
+        return TrackerState.WALLET_UNTRACKED.value
 
     async def received_wallet_untrack(self, update: Update, context: CallbackContext):
         """Handle the received wallet address and stop tracking it."""
@@ -283,11 +349,29 @@ class WalletTracker(metaclass=SingletonMeta):
 
         # Check if the wallet is currently being tracked
         if (
-            wallet_address in self.tracked_wallets
-            and self.tracked_wallets[wallet_address][0] == chat_id
+            # wallet_address in self.tracked_wallets
+            # and self.tracked_wallets[wallet_address][0] == chat_id
+            self.table.get_item(Key={"wallet_address": wallet_address})["Item"][
+                "chat_id"
+            ]
+            == chat_id
         ):
             # Stop tracking the wallet
-            del self.tracked_wallets[wallet_address]
+            # del self.tracked_wallets[wallet_address]
+            try:
+                self.logger.debug(
+                    "Removing wallet %s for chat %s from database.",
+                    wallet_address,
+                    chat_id,
+                )
+                self.table.delete_item(Key={"wallet_address": wallet_address})
+            except ClientError as e:
+                self.logger.error("Failed to remove wallet from database: %s", str(e))
+                await update.message.reply_text(
+                    "❌ Failed to remove wallet from database. Please try again later."
+                )
+                return ConversationHandler.END
+
             self.logger.info(
                 "Stopped tracking wallet %s for chat %s.", wallet_address, chat_id
             )

@@ -11,11 +11,16 @@ WORKDIR /app
 
 COPY . /app
 
+RUN mkdir -p /root/.aws \
+    && mv aws_config /root/.aws/config \
+    && mv .env /root/.env && \
+    source /root/.env
+
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir --upgrade -r /app/requirements.txt
 
-ENV TELEGRAM_TOKEN=""
-ENV ETHERSCAN_API_KEY=""
+
+ENV DOCKER_ENV="True"
 ENV UPDATE_THRESHOLD=5
 ENV LOG_LEVEL=INFO
 ENV LOG_FORMAT="%(asctime)s %(levelprefix)s %(message)s"

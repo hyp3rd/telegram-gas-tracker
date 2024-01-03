@@ -3,19 +3,25 @@
 from enum import Enum
 
 
-class GasTrackerState(Enum):
-    """Gas Emoji Enum"""
+class Env(Enum):
+    """Environment Enum"""
+
+    DOCKER = "DOCKER"
+    LOCAL = "LOCAL"
+
+
+class TrackerSemaphore(Enum):
+    """Semaphore Emoji Enum"""
 
     GREEN = "🟢"
     YELLOW = "🟡"
     RED = "🔴"
 
 
-class AwaitInterval(Enum):
+class TrackerState(Enum):
     """Awaiting Enum"""
 
     TRACKING = 1
     THRESHOLDS = 2
     WALLET_ADDRESS = 3
     WALLET_UNTRACKED = 4
-    BLOCK_TIME = 10

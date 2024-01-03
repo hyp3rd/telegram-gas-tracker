@@ -227,4 +227,5 @@ tags
 ### Project ###
 build
 tools/registry-auth
-tracker_v1.py
+aws_credentials
+aws_config

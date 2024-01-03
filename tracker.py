@@ -1,5 +1,7 @@
 """Simple Bot to track Ethereum gas prices on Etherscan"""
 import asyncio
+import os
+import time
 from asyncio.queues import Queue
 
 import aiohttp
@@ -20,23 +22,25 @@ from uvicorn import Config, Server
 
 from api import app
 from core import SingletonMeta
-from gas_tracker import AwaitInterval, GasTracker
+from enums import Env
+from gas_tracker import GasTracker, TrackerState
 from tracker.config import ConfigHandler
 from tracker.logger import Logger
 from wallet_tracker import WalletTracker
-
-config = ConfigHandler()
 
 
 class Tracker(metaclass=SingletonMeta):
     """Tracker class."""
 
-    def __init__(self):
+    def __init__(self, config: ConfigHandler):
         """Initialize the Tracker class."""
-        self.logger = Logger.init_logger("tracker")
 
+        self.config = config
+        self.logger = Logger.init_logger("tracker")
         # Enable logging
         self.logger.configure()
+        self.logger.info("Logger configured")
+        self.logger.info("Tracker running in %s environment", config._ennvironment)
 
         # Create an asyncio Queue
         self.update_queue: Queue = asyncio.Queue()
@@ -149,6 +153,25 @@ class Tracker(metaclass=SingletonMeta):
                 "Exception handling the help command: %s", ex, exc_info=True
             )
 
+    async def __ensure_aws_credentials(self):
+        """Ensure the AWS credentials are loaded."""
+        if self.config.environment == Env.DOCKER.value:
+            lock = asyncio.Lock()
+            await lock.acquire()
+            try:
+                # wait that the aws credentials are loaded
+                for i in range(self.config.aws_credentials_timeout):
+                    self.logger.info(
+                        "Waiting for the AWS credentials file, attempt %s", i + 1
+                    )
+                    if os.path.isfile("/root/.aws/credentials"):
+                        break
+                    time.sleep(5)
+
+                raise TimeoutError("Timeout waiting for the AWS credentials")
+            finally:
+                lock.release()
+
     async def main(self):
         """Start the bot and the gas price monitor."""
         loop = asyncio.new_event_loop()
@@ -159,6 +182,7 @@ class Tracker(metaclass=SingletonMeta):
 
         try:
             self.logger.info("Starting the bot")
+            await self.__ensure_aws_credentials()
             await self.application.initialize()
 
             gas_tracker = GasTracker(application=self.application, logger=self.logger)
@@ -172,7 +196,7 @@ class Tracker(metaclass=SingletonMeta):
                     CommandHandler("track", gas_tracker.ask_for_tracking_duration)
                 ],
                 states={
-                    AwaitInterval.TRACKING: [
+                    TrackerState.TRACKING.value: [
                         MessageHandler(
                             filters.TEXT & ~filters.COMMAND,
                             gas_tracker.received_tracking_duration,
@@ -187,7 +211,7 @@ class Tracker(metaclass=SingletonMeta):
                     CommandHandler("set_thresholds", gas_tracker.ask_for_thresholds)
                 ],
                 states={
-                    AwaitInterval.THRESHOLDS: [
+                    TrackerState.THRESHOLDS.value: [
                         MessageHandler(
                             filters.TEXT & ~filters.COMMAND,
                             gas_tracker.received_thresholds,
@@ -202,7 +226,7 @@ class Tracker(metaclass=SingletonMeta):
                     CommandHandler("track_wallet", wallet_tracker.ask_for_wallet)
                 ],
                 states={
-                    AwaitInterval.WALLET_ADDRESS: [
+                    TrackerState.WALLET_ADDRESS.value: [
                         MessageHandler(
                             filters.TEXT & ~filters.COMMAND,
                             wallet_tracker.received_wallet,
@@ -219,7 +243,7 @@ class Tracker(metaclass=SingletonMeta):
                     )
                 ],
                 states={
-                    AwaitInterval.WALLET_UNTRACKED: [
+                    TrackerState.WALLET_UNTRACKED.value: [
                         MessageHandler(
                             filters.TEXT & ~filters.COMMAND,
                             wallet_tracker.received_wallet_untrack,
@@ -291,5 +315,8 @@ class Tracker(metaclass=SingletonMeta):
 
 
 if __name__ == "__main__":
-    tracker = Tracker()
+    __config = ConfigHandler()
+    __config.bootstrap()
+    tracker = Tracker(__config)
+
     asyncio.run(tracker.main())
