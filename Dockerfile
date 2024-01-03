@@ -12,7 +12,7 @@ WORKDIR /app
 COPY . /app
 
 RUN mkdir -p /root/.aws \
-    && mv aws_credentials /root/.aws/credentials \
+    # && mv aws_credentials /root/.aws/credentials \
     && mv aws_config /root/.aws/config \
     && mv .env /root/.env && \
     source /root/.env
