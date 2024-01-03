@@ -1,7 +1,8 @@
 """Simple Bot to track Ethereum gas prices on Etherscan"""
 import asyncio
-import os
-import time
+
+# import os
+# import time
 from asyncio.queues import Queue
 
 import aiohttp
@@ -22,8 +23,10 @@ from uvicorn import Config, Server
 
 from api import app
 from core import SingletonMeta
-from enums import Env
+
+# from enums import Env
 from gas_tracker import GasTracker, TrackerState
+from release import __version__ as version
 from tracker.config import ConfigHandler
 from tracker.logger import Logger
 from wallet_tracker import WalletTracker
@@ -39,6 +42,7 @@ class Tracker(metaclass=SingletonMeta):
         self.logger = Logger.init_logger("tracker")
         # Enable logging
         self.logger.configure()
+        self.logger.info("Tracker v%s", version)
         self.logger.info("Logger configured")
         self.logger.info("Tracker running in %s environment", config._ennvironment)
 
@@ -153,24 +157,24 @@ class Tracker(metaclass=SingletonMeta):
                 "Exception handling the help command: %s", ex, exc_info=True
             )
 
-    async def __ensure_aws_credentials(self):
-        """Ensure the AWS credentials are loaded."""
-        if self.config.environment == Env.DOCKER.value:
-            lock = asyncio.Lock()
-            await lock.acquire()
-            try:
-                # wait that the aws credentials are loaded
-                for i in range(self.config.aws_credentials_timeout):
-                    self.logger.info(
-                        "Waiting for the AWS credentials file, attempt %s", i + 1
-                    )
-                    if os.path.isfile("/root/.aws/credentials"):
-                        break
-                    time.sleep(5)
+    # async def __ensure_aws_credentials(self):
+    #     """Ensure the AWS credentials are loaded."""
+    #     if self.config.environment == Env.DOCKER.value:
+    #         lock = asyncio.Lock()
+    #         await lock.acquire()
+    #         try:
+    #             # wait that the aws credentials are loaded
+    #             for i in range(self.config.aws_credentials_timeout):
+    #                 self.logger.info(
+    #                     "Waiting for the AWS credentials file, attempt %s", i + 1
+    #                 )
+    #                 if os.path.isfile("/root/.aws/credentials"):
+    #                     return
+    #                 time.sleep(5)
 
-                raise TimeoutError("Timeout waiting for the AWS credentials")
-            finally:
-                lock.release()
+    #             raise TimeoutError("Timeout waiting for the AWS credentials")
+    #         finally:
+    #             lock.release()
 
     async def main(self):
         """Start the bot and the gas price monitor."""
@@ -183,12 +187,12 @@ class Tracker(metaclass=SingletonMeta):
         try:
             self.logger.info("Starting the bot")
 
-            lock = asyncio.Lock()
-            try:
-                await lock.acquire()
-                await self.__ensure_aws_credentials()
-            finally:
-                lock.release()
+            # lock = asyncio.Lock()
+            # try:
+            #     await lock.acquire()
+            #     # await self.__ensure_aws_credentials()
+            # finally:
+            #     lock.release()
 
             await self.application.initialize()
 

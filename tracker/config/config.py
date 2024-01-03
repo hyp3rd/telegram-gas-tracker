@@ -1,6 +1,5 @@
 """Configuration file for the application."""
 import os
-import time
 
 from dotenv import load_dotenv
 
@@ -29,12 +28,12 @@ class ConfigHandler(
         self._log_format = None
         self._log_date_format = None
 
-    def __load_aws_credentials(self):
-        """Load AWS credentials from environment variables."""
-        aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
-        aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        # def __load_aws_credentials(self):
+        #     """Load AWS credentials from environment variables."""
+        #     aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+        #     aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
 
-        return aws_access_key_id, aws_secret_access_key
+        # return aws_access_key_id, aws_secret_access_key
 
     def bootstrap(self, attempt=0):
         """Load environment variables."""
@@ -45,31 +44,32 @@ class ConfigHandler(
         if self._ennvironment == Env.DOCKER.value:
             load_dotenv("/root/.env")
 
-            aws_access_key_id, aws_secret_access_key = self.__load_aws_credentials()
+            # aws_access_key_id, aws_secret_access_key = self.__load_aws_credentials()
+            # _ = self.__load_aws_credentials()
 
-            if not aws_access_key_id or not aws_secret_access_key:
-                # wait that the aws credentials are loaded
-                while attempt <= self.aws_credentials_timeout:
-                    print(
-                        f"Waiting to load the AWS credentials ({attempt}/{self.aws_credentials_timeout})"
-                    )
-                    time.sleep(3)
-                    attempt = attempt + 1
-                    self.bootstrap(attempt)
+            # if not aws_access_key_id or not aws_secret_access_key:
+            # wait that the aws credentials are loaded
+            #     while attempt <= self.aws_credentials_timeout:
+            #         print(
+            #             f"Waiting to load the AWS credentials ({attempt}/{self.aws_credentials_timeout})"
+            #         )
+            #         time.sleep(3)
+            #         attempt = attempt + 1
+            #         self.bootstrap(attempt)
 
-                raise ValueError(
-                    "AWS credentials not loaded from environment variables"
-                )
+            #     raise ValueError(
+            #         "AWS credentials not loaded from environment variables"
+            #     )
 
-            aws_config_path = "/root/.aws"
-            os.makedirs(aws_config_path, exist_ok=True)
+            # aws_config_path = "/root/.aws"
+            # os.makedirs(aws_config_path, exist_ok=True)
 
             # create the credentials file
-            with open(f"{aws_config_path}/credentials", "w", encoding="utf-8") as f:
-                f.write(
-                    f"[default]\naws_access_key_id = {aws_access_key_id}\naws_secret_access_key = {aws_secret_access_key}\n"  # pylint: disable=line-too-long
-                )
-                f.close()
+            # with open(f"{aws_config_path}/credentials", "w", encoding="utf-8") as f:
+            #     f.write(
+            #         f"[default]\naws_access_key_id = {aws_access_key_id}\naws_secret_access_key = {aws_secret_access_key}\n"  # pylint: disable=line-too-long
+            #     )
+            #     f.close()
 
         else:
             load_dotenv(".env")

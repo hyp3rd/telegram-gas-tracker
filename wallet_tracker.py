@@ -1,6 +1,7 @@
 """Wallet Tracker"""
 
 import asyncio
+import os
 
 import aiohttp
 import boto3
@@ -10,7 +11,7 @@ from telegram import Update
 from telegram.ext import Application, CallbackContext, ConversationHandler
 
 from core import SingletonMeta
-from enums import TrackerState
+from enums import Env, TrackerState
 from tracker.config import ConfigHandler
 from tracker.logger import Logger
 
@@ -28,7 +29,16 @@ class WalletTracker(metaclass=SingletonMeta):
         # The Telegram Application
         self.application: Application = application
 
-        self.db = boto3.resource("dynamodb")
+        # Handle AWS credentials when running in Docker
+        if config.environment == Env.DOCKER.value:
+            aws_access_key_id, aws_secret_access_key = self.__load_aws_credentials()
+            session = boto3.Session(
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key,
+            )
+            self.db = session.resource("dynamodb")
+        else:
+            self.db = boto3.resource("dynamodb")
         self.table = self.db.Table("tracked_wallets")
 
         self.tracked_wallets_cache = (
@@ -36,6 +46,16 @@ class WalletTracker(metaclass=SingletonMeta):
         )  # Local cache: {wallet_address: (chat_id, last_checked_block)}
 
         # self.tracked_wallets = {}  # {wallet_address: (chat_id, last_checked_block)}
+
+    def __load_aws_credentials(self):
+        """Load AWS credentials from environment variables."""
+        aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+        aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+
+        if not aws_access_key_id or not aws_secret_access_key:
+            raise ValueError("AWS credentials not found in environment variables.")
+
+        return aws_access_key_id, aws_secret_access_key
 
     async def update_cache(self):
         """Update the local cache of tracked wallets."""
