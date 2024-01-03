@@ -17,7 +17,6 @@ config = ConfigHandler()
 async def health_check():
     """Health check endpoint."""
     results = {}
-    results["version"] = version
 
     # Check Telegram Bot API connectivity
     try:
@@ -44,8 +43,9 @@ async def health_check():
     overall_health = all(status is True for status in results.values())
 
     if overall_health:
-        return {"status": "healthy", "details": results}
+        return {"version": version, "status": "healthy", "details": results}
 
     raise HTTPException(
-        status_code=503, detail={"status": "unhealthy", "details": results}
+        status_code=503,
+        detail={"version": version, "status": "unhealthy", "details": results},
     )
