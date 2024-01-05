@@ -26,3 +26,5 @@ class TrackerState(Enum):
     THRESHOLDS = 2
     WALLET_ADDRESS = 3
     WALLET_UNTRACKED = 4
+    WALLET_TAG = 5
+    WALLET_RESOLVED = 6

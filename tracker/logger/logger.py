@@ -67,12 +67,6 @@ class Logger(logging.Logger):
         return logger
 
     @staticmethod
-    def get_telethon_logger() -> logging.Logger:
-        """Get the Telethon logger"""
-        logger = logging.getLogger("telethon")
-        return logger
-
-    @staticmethod
     def init_logger(name: str) -> "Logger":
         """Initialize a logger for the application."""
         logger = Logger(name)

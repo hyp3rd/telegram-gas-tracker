@@ -25,6 +25,7 @@ class ConfigHandler(
         self._etherscan_api_key = None
         self._etherscan_api_url = None
         self._etherscan_gastracker_url = None
+        self._infura_api_key = None
         self._log_level = None
         self._log_format = None
         self._log_date_format = None
@@ -49,6 +50,7 @@ class ConfigHandler(
 
         self._telegram_token = os.getenv("TELEGRAM_TOKEN")
         self._etherscan_api_key = os.getenv("ETHERSCAN_API_KEY")
+        self._infura_api_key = os.getenv("INFURA_API_KEY")
 
         if AWSUtils.is_aws_environment():
             # _telegram_token_secret = AWSUtils.get_secret_value(
@@ -60,6 +62,8 @@ class ConfigHandler(
             #     "prod/telegram-gas-tracker/ETHERSCAN_API_KEY"
             # )
             self._etherscan_api_key = AWSUtils.get_secret_value(self._etherscan_api_key)
+
+            self._infura_api_key = AWSUtils.get_secret_value(self._infura_api_key)
 
         self._telegram_api_url = f"https://api.telegram.org/bot{self._telegram_token}/"
         self._etherscan_api_url = (
@@ -114,6 +118,11 @@ class ConfigHandler(
     def etherscan_gastracker_url(self):
         """Return the Etherscan Gas Tracker URL."""
         return self._etherscan_gastracker_url
+
+    @property
+    def infura_api_key(self):
+        """Return the Infura API key."""
+        return self._infura_api_key
 
     @property
     def log_level(self):

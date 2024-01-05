@@ -5,6 +5,7 @@ import os
 import time
 
 import boto3
+from boto3.dynamodb.types import TypeDeserializer
 from botocore.exceptions import ClientError
 
 from core import SingletonMeta
@@ -108,3 +109,17 @@ class AWSUtils(metaclass=SingletonMeta):
     def is_aws_environment() -> bool:
         """Check if the environment is AWS."""
         return os.getenv("CLOUD_PROVIDER") == Env.AWS.value
+
+    def deserialize_dynamodb_json(self, node):
+        """Helper function to convert AWS DynamoDB items to JSON serializable format"""
+        deserializer = TypeDeserializer()
+        if isinstance(node, list):
+            return [self.deserialize_dynamodb_json(n) for n in node]
+        if isinstance(node, dict):
+            if ":n" in node:  # It's a number; DynamoDB uses this notation
+                return float(
+                    deserializer.deserialize(node)
+                )  # Convert Decimal to float for JSON serialization
+            return {k: self.deserialize_dynamodb_json(v) for k, v in node.items()}
+
+        return node

@@ -17,7 +17,7 @@ config = ConfigHandler()
 class GasTracker(metaclass=SingletonMeta):
     """Gas Tracker Singleton Class"""
 
-    def __init__(self, application: Application, logger: Logger):
+    def __init__(self, application: Application | None, logger: Logger):
         """Initialize the Tracker class."""
         self.logger = logger
 

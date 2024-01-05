@@ -91,6 +91,12 @@ class Tracker(metaclass=SingletonMeta):
             untrack_wallet_command = BotCommand(
                 command="untrack_wallet", description="Untrack a wallet"
             )
+            list_tracked_wallets_command = BotCommand(
+                command="list_tracked_wallets", description="List the tracked wallets"
+            )
+            resolved_wallet_command = BotCommand(
+                command="resolve_wallet", description="Resolve a wallet"
+            )
 
             commands_set = await self.application.bot.set_my_commands(
                 [
@@ -103,6 +109,8 @@ class Tracker(metaclass=SingletonMeta):
                     track_command,
                     track_wallet_command,
                     untrack_wallet_command,
+                    list_tracked_wallets_command,
+                    resolved_wallet_command,
                 ]
             )
             self.logger.info("Commands set successfully: %s", commands_set)
@@ -135,6 +143,7 @@ class Tracker(metaclass=SingletonMeta):
             "/track - Track the gas fees for a specified duration (max 10 min)\n"
             "/track_wallet - Track a wallet for new transactions\n"
             "/untrack_wallet - Untrack a wallet\n"
+            "/list_tracked_wallets - List the tracked wallets\n"
             "/help - Show this help message\n\n"
             "To receive alerts, use the /subscribe command. When the gas price is low, "
             "you'll receive a notification. You can also set custom alert thresholds."
@@ -164,13 +173,6 @@ class Tracker(metaclass=SingletonMeta):
 
         try:
             self.logger.info("Starting the bot")
-
-            # lock = asyncio.Lock()
-            # try:
-            #     await lock.acquire()
-            #     # await self.__ensure_aws_credentials()
-            # finally:
-            #     lock.release()
 
             await self.application.initialize()
 
@@ -215,7 +217,13 @@ class Tracker(metaclass=SingletonMeta):
                     CommandHandler("track_wallet", wallet_tracker.ask_for_wallet)
                 ],
                 states={
-                    TrackerState.WALLET_ADDRESS.value: [
+                    TrackerState.WALLET_ADDRESS.value: [  # Ensure this state is defined in TrackerState
+                        MessageHandler(
+                            filters.TEXT & ~filters.COMMAND,
+                            wallet_tracker.ask_for_wallet_tag,
+                        )
+                    ],
+                    TrackerState.WALLET_TAG.value: [
                         MessageHandler(
                             filters.TEXT & ~filters.COMMAND,
                             wallet_tracker.received_wallet,
@@ -241,10 +249,28 @@ class Tracker(metaclass=SingletonMeta):
                 },
                 fallbacks=[CommandHandler("cancel", self.cancel)],
             )
+            # Define conversation handler for '/resolve_wallet' command
+            resolve_wallet_conv_handler = ConversationHandler(
+                entry_points=[
+                    CommandHandler(
+                        "resolve_wallet", wallet_tracker.ask_for_wallet_to_resolve
+                    )
+                ],
+                states={
+                    TrackerState.WALLET_RESOLVED.value: [
+                        MessageHandler(
+                            filters.TEXT & ~filters.COMMAND,
+                            wallet_tracker.received_wallet_to_resolve,
+                        )
+                    ],
+                },
+                fallbacks=[CommandHandler("cancel", self.cancel)],
+            )
 
             # Add conversation handlers to the application
             self.application.add_handler(track_wallet_conv_handler)
             self.application.add_handler(untrack_wallet_conv_handler)
+            self.application.add_handler(resolve_wallet_conv_handler)
 
             self.application.add_handler(track_conv_handler)
             self.application.add_handler(thresholds_conv_handler)
@@ -262,6 +288,11 @@ class Tracker(metaclass=SingletonMeta):
             self.application.add_handler(
                 CommandHandler("thresholds", gas_tracker.thresholds)
             )
+            self.application.add_handler(
+                CommandHandler(
+                    "list_tracked_wallets", wallet_tracker.list_tracked_wallets
+                )
+            )
             self.application.add_error_handler(self.error_handler)
 
             self.logger.info("Handlers initialized")
@@ -274,6 +305,7 @@ class Tracker(metaclass=SingletonMeta):
                 await self.application.start()
                 asyncio.create_task(gas_tracker.monitor_gas_prices())
                 asyncio.create_task(wallet_tracker.monitor_wallet_transactions())
+                asyncio.create_task(wallet_tracker.refresh_db_cache())
                 await self.application.updater.start_polling()
                 await server.serve()
                 await self.application.updater.stop()
@@ -296,11 +328,11 @@ class Tracker(metaclass=SingletonMeta):
         self.logger.error('Update "%s" caused error "%s"', update, context.error)
         if update:
             try:
-                await update.message.reply_text(
-                    "An error occurred. Please try again later."
-                )
+                await update.message.reply_text("An error occured. Please try again.")
             except Exception as e:  # pylint: disable=broad-except
                 self.logger.error("Error while sending error message to user: %s", e)
+
+        return ConversationHandler.END
 
 
 if __name__ == "__main__":
