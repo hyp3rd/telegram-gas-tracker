@@ -28,3 +28,5 @@ class TrackerState(Enum):
     WALLET_UNTRACKED = 4
     WALLET_TAG = 5
     WALLET_RESOLVED = 6
+    WALLET_PAUSE = 7
+    WALLET_UNPAUSE = 8

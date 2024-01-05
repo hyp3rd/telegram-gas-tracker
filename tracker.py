@@ -63,7 +63,7 @@ class Tracker(metaclass=SingletonMeta):
         """Send a message when the command /start is issued."""
         await self.help_command(update, context)
 
-    async def __set_menu_button(self, chat_id=None):
+    async def __set_menu_button(self, chat_id=None):  # pylint: disable=too-many-locals
         """Set the menu button."""
         try:
             help_command = BotCommand(command="help", description="Get Help")
@@ -97,6 +97,12 @@ class Tracker(metaclass=SingletonMeta):
             resolved_wallet_command = BotCommand(
                 command="resolve_wallet", description="Resolve a wallet"
             )
+            pause_tracking_wallet_command = BotCommand(
+                command="pause_tracking_wallet", description="Pause tracking a wallet"
+            )
+            resume_tracking_wallet_command = BotCommand(
+                command="resume_tracking_wallet", description="Resume tracking a wallet"
+            )
 
             commands_set = await self.application.bot.set_my_commands(
                 [
@@ -111,6 +117,8 @@ class Tracker(metaclass=SingletonMeta):
                     untrack_wallet_command,
                     list_tracked_wallets_command,
                     resolved_wallet_command,
+                    pause_tracking_wallet_command,
+                    resume_tracking_wallet_command,
                 ]
             )
             self.logger.info("Commands set successfully: %s", commands_set)
@@ -266,11 +274,46 @@ class Tracker(metaclass=SingletonMeta):
                 },
                 fallbacks=[CommandHandler("cancel", self.cancel)],
             )
+            pause_tracking_wallet_conv_handler = ConversationHandler(
+                entry_points=[
+                    CommandHandler(
+                        "pause_tracking_wallet", wallet_tracker.ask_for_wallet_to_pause
+                    )
+                ],
+                states={
+                    TrackerState.WALLET_PAUSE.value: [
+                        MessageHandler(
+                            filters.TEXT & ~filters.COMMAND,
+                            wallet_tracker.received_wallet_to_pause,
+                        )
+                    ],
+                },
+                fallbacks=[CommandHandler("cancel", self.cancel)],
+            )
+            resume_tracking_wallet_conv_handler = ConversationHandler(
+                entry_points=[
+                    CommandHandler(
+                        "resume_tracking_wallet",
+                        wallet_tracker.ask_for_wallet_to_resume,
+                    )
+                ],
+                states={
+                    TrackerState.WALLET_UNPAUSE.value: [
+                        MessageHandler(
+                            filters.TEXT & ~filters.COMMAND,
+                            wallet_tracker.received_wallet_to_resume,
+                        )
+                    ],
+                },
+                fallbacks=[CommandHandler("cancel", self.cancel)],
+            )
 
             # Add conversation handlers to the application
             self.application.add_handler(track_wallet_conv_handler)
             self.application.add_handler(untrack_wallet_conv_handler)
             self.application.add_handler(resolve_wallet_conv_handler)
+            self.application.add_handler(pause_tracking_wallet_conv_handler)
+            self.application.add_handler(resume_tracking_wallet_conv_handler)
 
             self.application.add_handler(track_conv_handler)
             self.application.add_handler(thresholds_conv_handler)

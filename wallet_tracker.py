@@ -150,6 +150,35 @@ class WalletTracker(metaclass=SingletonMeta):
         except ClientError as e:
             self.logger.error(f"Error removing wallet: {e}")
 
+    async def set_pause_wallet_state(
+        self, chat_id, wallet_address, paused: bool = True
+    ):
+        """Set a wallet in paused state from the tracked list for a user."""
+        try:
+            response = self.table.get_item(Key={"chat_id": chat_id})
+            item = response.get("Item", None)
+
+            if item:
+                tracked_wallets = item.get("tracked_wallets", [])
+                for wallet in tracked_wallets:
+                    if wallet["wallet_address"] == wallet_address:
+                        wallet["paused"] = paused
+                        break  # Stop the loop once the wallet is found and updated
+
+                # Update the tracked_wallets attribute in the database
+                self.table.update_item(
+                    Key={"chat_id": chat_id},
+                    UpdateExpression="SET tracked_wallets = :val",
+                    ExpressionAttributeValues={":val": tracked_wallets},
+                )
+                # Update the local cache
+                self.tracked_wallets_cache[chat_id] = tracked_wallets
+                self.logger.info(f"Set paused state for {wallet_address} to True")
+        except ClientError as e:
+            self.logger.error(
+                f"Failed to set paused state for wallet {wallet_address}: {e}"
+            )
+
     async def update_last_checked_block(
         self, chat_id, wallet_address, new_last_checked_block
     ):
@@ -203,6 +232,16 @@ class WalletTracker(metaclass=SingletonMeta):
                     tracked_wallets = item.get("tracked_wallets", [])
 
                     for wallet in tracked_wallets:
+                        is_paused = wallet.get("paused", False)
+                        self.logger.debug(
+                            "Checking wallet %s for paused state: %s",
+                            wallet["wallet_address"],
+                            is_paused,
+                        )
+
+                        if is_paused:
+                            continue  # Skip this wallet if it's paused
+
                         wallet_address = wallet["wallet_address"]
                         try:
                             last_checked_block = int(wallet["last_checked_block"])
@@ -651,6 +690,62 @@ class WalletTracker(metaclass=SingletonMeta):
 
         return ConversationHandler.END
 
+    async def ask_for_wallet_to_pause(self, update: Update, context: CallbackContext):
+        """Ask the user for the wallet address to stop tracking."""
+        await update.message.reply_text(
+            "Please enter the wallet address you want to pause tracking:"
+        )
+        return TrackerState.WALLET_PAUSE.value
+
+    async def received_wallet_to_pause(self, update: Update, context: CallbackContext):
+        """Handle the received wallet address and stop tracking it."""
+        wallet_address = update.message.text.strip()
+        chat_id = update.message.chat_id
+
+        # set the paused=true property to the wallet_address to allow resume tracking later
+        current_wallets = self.tracked_wallets_cache.get(chat_id, [])
+        if any(
+            wallet["wallet_address"] == wallet_address for wallet in current_wallets
+        ):
+            await self.set_pause_wallet_state(chat_id, wallet_address, paused=True)
+            await update.message.reply_text(
+                f"✅ Successfully paused tracking wallet: `{wallet_address}`",
+                parse_mode="Markdown",
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ The wallet `{wallet_address}` is not being tracked, or you do not have permissions.",
+                parse_mode="Markdown",
+            )
+
+    async def ask_for_wallet_to_resume(self, update: Update, context: CallbackContext):
+        """Ask the user for the wallet address to stop tracking."""
+        await update.message.reply_text(
+            "Please enter the wallet address you want to resume tracking:"
+        )
+        return TrackerState.WALLET_UNPAUSE.value
+
+    async def received_wallet_to_resume(self, update: Update, context: CallbackContext):
+        """Handle the received wallet address and stop tracking it."""
+        wallet_address = update.message.text.strip()
+        chat_id = update.message.chat_id
+
+        # set the paused=true property to the wallet_address to allow resume tracking later
+        current_wallets = self.tracked_wallets_cache.get(chat_id, [])
+        if any(
+            wallet["wallet_address"] == wallet_address for wallet in current_wallets
+        ):
+            await self.set_pause_wallet_state(chat_id, wallet_address, paused=False)
+            await update.message.reply_text(
+                f"✅ Successfully resumed tracking wallet: `{wallet_address}`",
+                parse_mode="Markdown",
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ The wallet `{wallet_address}` is not being tracked, or you do not have permissions.",
+                parse_mode="Markdown",
+            )
+
     async def list_tracked_wallets(self, update: Update, context: CallbackContext):
         """List all tracked wallets."""
         chat_id = update.message.chat_id
@@ -661,7 +756,8 @@ class WalletTracker(metaclass=SingletonMeta):
             wallet_address = wallet["wallet_address"]
             last_checked_block = wallet["last_checked_block"]
             wallet_tag = wallet.get("wallet_tag", "No wallet_tag provided")
-            message += f"- `{wallet_address}`\nTag: `{wallet_tag}`\nfrom block {last_checked_block}\n"
+            status = "Paused" if wallet.get("paused", False) else "Active"
+            message += f"- `{wallet_address}`\nTag: `{wallet_tag}`\nfrom block {last_checked_block}\nstatus: {status}\n"
 
         if not tracked_wallets:
             message = "🔍 You are not currently tracking any wallets."
