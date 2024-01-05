@@ -216,7 +216,7 @@ class WalletTracker(metaclass=SingletonMeta):
                                 f"Invalid block for wallet `{wallet_address}`\n"
                                 "Please check if the address is valid."
                             )
-                            self.application.bot.send_message(
+                            await self.application.bot.send_message(
                                 chat_id=chat_id,
                                 text=error_message,
                                 parse_mode="Markdown",
@@ -360,7 +360,7 @@ class WalletTracker(metaclass=SingletonMeta):
 
         # Determine the direction of the transaction
         direction = (
-            "Incoming" if from_address.lower() == wallet_address.lower() else "Outgoing"
+            "Outgoing" if from_address.lower() == wallet_address.lower() else "Incoming"
         )
 
         # Check for ERC-20 token transfer (methodId: 0xa9059cbb)
