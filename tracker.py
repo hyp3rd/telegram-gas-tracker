@@ -189,9 +189,7 @@ class Tracker(metaclass=SingletonMeta):
             await self.application.initialize()
 
             gas_tracker = GasTracker(application=self.application, logger=self.logger)
-            wallet_tracker = WalletTracker(
-                application=self.application, logger=self.logger
-            )
+            wallet_tracker = WalletTracker(application=self.application)
 
             # Define conversation handler for '/track' command
             track_conv_handler = ConversationHandler(

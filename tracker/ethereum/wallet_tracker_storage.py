@@ -145,10 +145,19 @@ class WalletTrackerStorage(metaclass=SingletonMeta):
     async def get_all(self):
         """Get all the items in the table."""
         try:
+            # fetch all items from cache first
+            if self.tracked_wallets_cache:
+                logger.debug("Returning all items from cache")
+                logger.debug(self.tracked_wallets_cache)
+                return self.__format_wallet_data(self.tracked_wallets_cache)
+
+            logger.warning("Returning all items from database")
             response = self.table.scan()
+
             if "Items" not in response:
                 return []
             return response.get("Items", [])
+
         except ClientError as e:
             logger.error("Error getting all items: %s", e)
             return []
@@ -198,3 +207,11 @@ class WalletTrackerStorage(metaclass=SingletonMeta):
             logger.error(
                 "Failed to set paused state for wallet %s: %s", wallet_address, e
             )
+
+    @staticmethod
+    def __format_wallet_data(wallet_data):
+        """Format the wallet data to ensure consistency."""
+        formatted_data = []
+        for chat_id, wallets in wallet_data.items():
+            formatted_data.append({"chat_id": chat_id, "tracked_wallets": wallets})
+        return formatted_data

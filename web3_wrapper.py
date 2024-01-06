@@ -4,6 +4,7 @@
 from ens import ENS  # pylint: disable=import-error
 from ens.exceptions import InvalidName, ResolverNotFound, UnauthorizedError
 from web3 import HTTPProvider, Web3
+from web3.types import ChecksumAddress
 
 from core import SingletonMeta
 from tracker.config import ConfigHandler
@@ -24,7 +25,7 @@ class Web3Wrapper(metaclass=SingletonMeta):
         self.web3 = Web3(self.provider)
         self.logger = logger
 
-    def resolve_ens(self, ens_name):
+    def resolve_ens(self, ens_name) -> ChecksumAddress | None:
         """Resolve an ENS name to an address."""
 
         self.logger.info("Resolving ENS name: %s", ens_name)
@@ -36,7 +37,7 @@ class Web3Wrapper(metaclass=SingletonMeta):
             self.logger.error("Error resolving ENS name: %s", e)
             return None
 
-    def get_ens_name(self, eth_address):
+    def get_ens_name(self, eth_address) -> str | None:
         """Get the ENS name of an address."""
 
         self.logger.info("Getting ENS name of address: %s", eth_address)
