@@ -19,6 +19,7 @@ class Web3Wrapper(metaclass=SingletonMeta):
         self.provider = HTTPProvider(
             f"https://mainnet.infura.io/v3/{config.infura_api_key}"
         )
+
         self.ns = ENS(self.provider)
         self.web3 = Web3(self.provider)
         self.logger = logger
@@ -72,3 +73,48 @@ class Web3Wrapper(metaclass=SingletonMeta):
         except (InvalidName, ResolverNotFound, UnauthorizedError) as e:
             self.logger.error("Error checking if %s is a valid address: %s", address, e)
             return False
+
+    def get_block_number(self) -> int:
+        """Get the current block number."""
+
+        self.logger.info("Getting the current block number")
+        try:
+            block_number = self.web3.eth.block_number
+            self.logger.debug("Current block number: %s", block_number)
+            return block_number
+        except (InvalidName, ResolverNotFound, UnauthorizedError) as e:
+            self.logger.error("Error getting the current block number: %s", e)
+            return None
+
+    def get_block(self, block_number) -> dict:
+        """Get a block by number."""
+
+        self.logger.info("Getting block %s", block_number)
+        try:
+            block = self.web3.eth.get_block(block_number, full_transactions=False)
+            self.logger.debug("Block %s: %s", block_number, block)
+            return block
+        except (InvalidName, ResolverNotFound, UnauthorizedError) as e:
+            self.logger.error("Error getting block %s: %s", block_number, e)
+            return None
+
+    def get_token_symbol_and_name(self, token_address) -> tuple:
+        """Get the symbol and name of a token."""
+
+        self.logger.info("Getting token symbol and name for %s", token_address)
+        try:
+            contract = self.web3.eth.contract(
+                address=token_address, abi=config.erc20_abi
+            )
+
+            symbol = contract.functions.symbol().call()
+            name = contract.functions.name().call()
+            self.logger.debug(
+                "Token symbol and name for %s: %s, %s", token_address, symbol, name
+            )
+            return symbol, name
+        except (InvalidName, ResolverNotFound, UnauthorizedError) as e:
+            self.logger.error(
+                "Error getting token symbol and name for %s: %s", token_address, e
+            )
+            return None, None

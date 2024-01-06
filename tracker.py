@@ -20,13 +20,14 @@ from uvicorn import Config, Server
 
 from api import app
 from core import SingletonMeta
-
-# from enums import Env
-from gas_tracker import GasTracker, TrackerState
 from release import __version__ as version
 from tracker.config import ConfigHandler
+
+# from enums import Env
+from tracker.ethereum.gas_tracker import GasTracker, TrackerState
+from tracker.ethereum.wallet_tracker import WalletTracker
+from tracker.ethereum.wallet_tracker_storage import WalletTrackerStorage
 from tracker.logger import Logger
-from wallet_tracker import WalletTracker
 
 
 class Tracker(metaclass=SingletonMeta):
@@ -152,6 +153,9 @@ class Tracker(metaclass=SingletonMeta):
             "/track_wallet - Track a wallet for new transactions\n"
             "/untrack_wallet - Untrack a wallet\n"
             "/list_tracked_wallets - List the tracked wallets\n"
+            "/resolve_wallet - Resolve a wallet\n"
+            "/pause_tracking_wallet - Pause tracking a wallet\n"
+            "/resume_tracking_wallet - Resume tracking a wallet\n\n"
             "/help - Show this help message\n\n"
             "To receive alerts, use the /subscribe command. When the gas price is low, "
             "you'll receive a notification. You can also set custom alert thresholds."
@@ -348,7 +352,7 @@ class Tracker(metaclass=SingletonMeta):
                 await self.application.start()
                 asyncio.create_task(gas_tracker.monitor_gas_prices())
                 asyncio.create_task(wallet_tracker.monitor_wallet_transactions())
-                asyncio.create_task(wallet_tracker.refresh_db_cache())
+                asyncio.create_task(WalletTrackerStorage().update_db_cache())
                 await self.application.updater.start_polling()
                 await server.serve()
                 await self.application.updater.stop()
