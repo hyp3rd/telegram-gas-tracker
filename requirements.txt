@@ -1,4 +1,4 @@
-aiohttp==3.9.1
+aiohttp==3.10.11
 python-dotenv==1.0.0
 python-telegram-bot[callback-data]==20.7
 uvicorn==0.25.0
